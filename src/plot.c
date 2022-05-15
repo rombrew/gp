@@ -4950,7 +4950,7 @@ plotDrawTrialFigureAll(plot_t *pl)
 		if (		resumed == 0
 				|| pl->draw_interrupt == 0) {
 
-			for (N = 0; N < lN; ++N) {
+			for (N = 0, resumed = 0; N < lN; ++N) {
 
 				fN = FIGS[N];
 
@@ -4958,9 +4958,16 @@ plotDrawTrialFigureAll(plot_t *pl)
 
 					plotDrawTrialFigure(pl, fN, tTOP);
 
+					resumed = 1;
+
 					if (pl->draw_interrupt != 0)
 						break;
 				}
+			}
+
+			if (resumed == 0) {
+
+				pl->draw_interrupt = 0;
 			}
 		}
 	}
