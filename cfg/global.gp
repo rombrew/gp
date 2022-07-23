@@ -1,7 +1,7 @@
 #!/tmp/gp/gp
 # vi: ft=conf
 
-# Take some configration from external file.
+# Take some configuration from external file.
 #
 #include "external.gp"
 
@@ -18,8 +18,8 @@
 # 	- "thin-bold"
 # 	- "thin-italic"
 #
-#font 24 "normal"
-#font 24 "/usr/share/fonts/corefonts/cour.ttf"
+#font 26 "normal"
+#font 26 "/usr/share/fonts/corefonts/cour.ttf"
 
 # Path to the screenshot directory.
 #
@@ -56,9 +56,13 @@ language 0
 #
 colorscheme 0
 
-# Draw font and line with antialiasing (0 = NONE, 1 = 4X_MSAA, 2 = 8X_MSAA).
+# Draw figures with antialiasing (0 = NONE, 1 = 4X_MSAA, 2 = 8X_MSAA).
 #
 antialiasing 1
+
+# Draw a solid font (0 = blended, 1 = solid).
+#
+solidfont 0
 
 # Draw UI with increased line thickness (0 = default, 1 = bold line).
 #
@@ -66,7 +70,7 @@ thickness 0
 
 # Default figure drawing.
 #
-# <1> Name of the drawing ("line", "dot").
+# <1> Name of the drawing ("line", "dash", "dot").
 # <2> Width of the figure.
 #
 drawing line 2
@@ -78,4 +82,8 @@ shortfilename 1
 # Define the number of significant digits in numerical printouts.
 #
 precision 9
+
+# Use in RAM dataset compression by LZ4 algorithm.
+#
+lz4_compress 0
 

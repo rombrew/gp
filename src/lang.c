@@ -58,6 +58,7 @@ void langFill(lang_t *la, int lang)
 			"L   Change a colorscheme  [ %s ]     \0"
 			"    Change a font         [ %s ]\0"
 			"    Drawing antialiasing  [ %s ]\0"
+			"    Solid font            [ %s ]\0"
 			"    Line thickness        [ %s ]\0"
 			"    Hinting mode          [ %s ]\0"
 			"    Font size             [ %s ]\0"
@@ -77,7 +78,8 @@ void langFill(lang_t *la, int lang)
 		la->dataset_menu[0] = " Time column  [%3i]";
 		la->dataset_menu[1] = " Time unwrap  [ %s ]";
 		la->dataset_menu[2] = " Time scale   [%s]";
-		la->dataset_menu[3] = " Length       [%3i]  %iM";
+		la->dataset_menu[3] = " Length       [%3i]  %iM (%i%%)";
+		la->dataset_menu[4] = " Close file";
 
 		la->axis_menu =
 
@@ -152,6 +154,7 @@ void langFill(lang_t *la, int lang)
 			"    Add F cumulative sum\0"
 			"    Add F bit field ...\0"
 			"    Add F low pass ...\0"
+			"    Add P polynomial ...\0"
 
 			"\0";
 
@@ -176,6 +179,7 @@ void langFill(lang_t *la, int lang)
 		la->file_name_edit = "File Name";
 		la->bit_number_edit = "Bit Range";
 		la->low_pass_edit = "Low Pass Gain";
+		la->polynomial_edit = "Degree of polynomial";
 		la->length_edit = "Length";
 		la->figure_thickness_edit = "Thickness";
 		la->font_size_edit = "Font size";
@@ -218,6 +222,7 @@ void langFill(lang_t *la, int lang)
 			"L   Сменить цветовую схему  [ %s ]     \0"
 			"    Переключение шрифтов    [ %s ]\0"
 			"    Сглаживание рисования   [ %s ]\0"
+			"    Сплошной шрифт          [ %s ]\0"
 			"    Толщина линий           [ %s ]\0"
 			"    Хинтинг шрифта          [ %s ]\0"
 			"    Размер шрифта           [ %s ]\0"
@@ -237,7 +242,8 @@ void langFill(lang_t *la, int lang)
 		la->dataset_menu[0] = " Столбец времени   [%3i]";
 		la->dataset_menu[1] = " Развернуть время  [ %s ]";
 		la->dataset_menu[2] = " Масштаб времени   [%s]";
-		la->dataset_menu[3] = " Длина             [%3i]  %iM";
+		la->dataset_menu[3] = " Длина             [%3i]  %iM (%i%%)";
+		la->dataset_menu[4] = " Закрыть файл";
 
 		la->axis_menu =
 
@@ -312,6 +318,7 @@ void langFill(lang_t *la, int lang)
 			"    Добавить F накопленные суммы\0"
 			"    Добавить F битовое поле ...\0"
 			"    Добавить F фильтр НЧ ...\0"
+			"    Добавить P полином ...\0"
 
 			"\0";
 
@@ -336,6 +343,7 @@ void langFill(lang_t *la, int lang)
 		la->file_name_edit = "Имя Файла";
 		la->bit_number_edit = "Дипазон Разрядов";
 		la->low_pass_edit = "Коэффициент НЧ фильтра";
+		la->polynomial_edit = "Степень полинома";
 		la->length_edit = "Длина";
 		la->figure_thickness_edit = "Толщина";
 		la->font_size_edit = "Размер шрифта";

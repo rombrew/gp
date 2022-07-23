@@ -31,7 +31,7 @@ extern int fp_isfinite(double x);
 void drawDashReset(draw_t *dw)
 {
 	dw->dash_context = 0;
-	dw->cached_x = 0;
+	dw->cached_ncol = -1;
 }
 
 void drawClearSurface(draw_t *dw, SDL_Surface *surface, colType_t col)
@@ -95,7 +95,7 @@ void drawClearTrial(draw_t *dw)
 
 	len = dw->pixmap.yspan * dw->pixmap.h;
 
-	if (dw->antialiasing != DRAW_NONE) {
+	if (dw->antialiasing != DRAW_SOLID) {
 
 		len *= 2;
 	}
@@ -541,7 +541,7 @@ void drawLineCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 	ye = (int) (fye * 16.);
 
 	h = (thickness > 0) ? thickness * 8 : 5;
-	h += (dw->antialiasing != DRAW_NONE) ? 12 : 0;
+	h += (dw->antialiasing != DRAW_SOLID) ? 12 : 0;
 
 	if (xs < xe) {
 
@@ -586,7 +586,7 @@ void drawLineCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 	w2dy = (ye - ys) * 16;
 	w3dy = (ys - ye) * 16;
 
-	if (dw->antialiasing == DRAW_NONE) {
+	if (dw->antialiasing == DRAW_SOLID) {
 
 		Uint8		*canvas = (Uint8 *) dw->pixmap.canvas;
 
@@ -1220,7 +1220,7 @@ void drawDashCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 	ye = (int) (fye * 16.);
 
 	h = (thickness > 0) ? thickness * 8 : 5;
-	h += (dw->antialiasing != DRAW_NONE) ? 12 : 0;
+	h += (dw->antialiasing != DRAW_SOLID) ? 12 : 0;
 
 	m = dash * 16;
 	f = m + space * 16;
@@ -1253,6 +1253,7 @@ void drawDashCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 	e = (xs - xe) * (xs - xe) + (ys - ye) * (ys - ye);
 	d = (int) sqrtf((float) e);
 
+	d = (d < 1) ? 1 : d;	/* FIXME: The line tearing appears on tight charts */
 	l = d * h;
 
 	w1 = (ys - ye) * (lcb.min_x * 16 - xe + 8) - (xs - xe) * (lcb.min_y * 16 - ye + 8);
@@ -1271,7 +1272,7 @@ void drawDashCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 
 	dw->dash_context = context;
 
-	if (dw->antialiasing == DRAW_NONE) {
+	if (dw->antialiasing == DRAW_SOLID) {
 
 		Uint8		*canvas = (Uint8 *) dw->pixmap.canvas;
 
@@ -1605,12 +1606,16 @@ int drawLineTrial(draw_t *dw, clipBox_t *cb, double fxs, double fys,
 	if (clipLine(&lcb, &fxs, &fys, &fxe, &fye) < 0)
 		return 0;
 
-	xs = (int) (fxs + 0.5);
-	ys = (int) (fys + 0.5);
-	xe = (int) (fxe + 0.5);
-	ye = (int) (fye + 0.5);
+	h = (dw->antialiasing == DRAW_8X_MSAA) ? 2 : 1;
 
-	if (xs == xe && xe == dw->cached_x) {
+	xs = (int) (fxs * (double) h + .5);
+	ys = (int) (fys * (double) h + .5);
+	xe = (int) (fxe * (double) h + .5);
+	ye = (int) (fye * (double) h + .5);
+
+	if (		ncol == dw->cached_ncol
+			&& xs == xe
+			&& xe == dw->cached_x) {
 
 		if (ys < ye) {
 
@@ -1630,8 +1635,9 @@ int drawLineTrial(draw_t *dw, clipBox_t *cb, double fxs, double fys,
 	}
 	else {
 		dw->cached_x = xe;
-		dw->cached_min_y = cb->max_y;
-		dw->cached_max_y = cb->min_y;
+		dw->cached_min_y = lcb.max_y * h;
+		dw->cached_max_y = lcb.min_y * h;
+		dw->cached_ncol = ncol;
 	}
 
 	xs = (int) (fxs * 16.);
@@ -1640,7 +1646,7 @@ int drawLineTrial(draw_t *dw, clipBox_t *cb, double fxs, double fys,
 	ye = (int) (fye * 16.);
 
 	h = (thickness > 0) ? thickness * 8 : 5;
-	h += (dw->antialiasing != DRAW_NONE) ? 12 : 0;
+	h += (dw->antialiasing == DRAW_8X_MSAA) ? 12 : 0;
 
 	if (xs < xe) {
 
@@ -1687,7 +1693,8 @@ int drawLineTrial(draw_t *dw, clipBox_t *cb, double fxs, double fys,
 
 	fill = 0;
 
-	if (dw->antialiasing == DRAW_NONE) {
+	if (		dw->antialiasing == DRAW_SOLID
+			|| dw->antialiasing == DRAW_4X_MSAA) {
 
 		Uint8		*trial = (Uint8 *) dw->pixmap.trial;
 
@@ -1985,7 +1992,7 @@ void drawText(draw_t *dw, SDL_Surface *surface, TTF_Font *font, int xs, int ys,
 	textColor.g = (col & 0x0000FF00UL) >> 8;
 	textColor.b = (col & 0x000000FFUL) >> 0;
 
-	if (dw->antialiasing == DRAW_NONE) {
+	if (dw->solidfont != 0) {
 
 		textSurface = TTF_RenderUTF8_Solid(font, text, textColor);
 	}
@@ -2190,7 +2197,7 @@ void drawDotCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs, 
 	ys = (int) (fys * 16.);
 
 	h = (rsize > 0) ? rsize * 8 : 5;
-	h += (dw->antialiasing != DRAW_NONE) ? 12 : 0;
+	h += (dw->antialiasing != DRAW_SOLID) ? 12 : 0;
 
 	lcb.min_x = (xs - h) / 16;
 	lcb.max_x = (xs + h) / 16;
@@ -2207,7 +2214,7 @@ void drawDotCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs, 
 		w1 = lcb.min_x * 16 - xs + 8;
 		w2 = lcb.min_y * 16 - ys + 8;
 
-		if (dw->antialiasing == DRAW_NONE) {
+		if (dw->antialiasing == DRAW_SOLID) {
 
 			Uint8		*canvas = (Uint8 *) dw->pixmap.canvas;
 
@@ -2442,7 +2449,7 @@ void drawDotCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs, 
 	else {
 		r = h * h;
 
-		if (dw->antialiasing == DRAW_NONE) {
+		if (dw->antialiasing == DRAW_SOLID) {
 
 			Uint8		*canvas = (Uint8 *) dw->pixmap.canvas;
 
@@ -2671,7 +2678,7 @@ int drawDotTrial(draw_t *dw, clipBox_t *cb, double fxs, double fys,
 	ys = (int) (fys * 16.);
 
 	h = (rsize > 0) ? rsize * 8 : 5;
-	h += (dw->antialiasing != DRAW_NONE) ? 12 : 0;
+	h += (dw->antialiasing != DRAW_SOLID) ? 12 : 0;
 
 	lcb.min_x = (xs - h) / 16;
 	lcb.max_x = (xs + h) / 16;
@@ -2690,7 +2697,7 @@ int drawDotTrial(draw_t *dw, clipBox_t *cb, double fxs, double fys,
 		w1 = lcb.min_x * 16 - xs + 8;
 		w2 = lcb.min_y * 16 - ys + 8;
 
-		if (dw->antialiasing == DRAW_NONE) {
+		if (dw->antialiasing == DRAW_SOLID) {
 
 			Uint8		*trial = (Uint8 *) dw->pixmap.trial;
 
@@ -2807,7 +2814,7 @@ int drawDotTrial(draw_t *dw, clipBox_t *cb, double fxs, double fys,
 		r = h * h;
 		rk = (h - 12) * (h - 12);
 
-		if (dw->antialiasing == DRAW_NONE) {
+		if (dw->antialiasing == DRAW_SOLID) {
 
 			Uint8		*trial = (Uint8 *) dw->pixmap.trial;
 
@@ -2999,7 +3006,7 @@ void drawFlushCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb)
 	pitch = surface->pitch / 4;
 	pixels += cb->min_y * pitch;
 
-	if (dw->antialiasing == DRAW_NONE) {
+	if (dw->antialiasing == DRAW_SOLID) {
 
 		Uint8		nb, *canvas = (Uint8 *) dw->pixmap.canvas;
 

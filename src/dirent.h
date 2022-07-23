@@ -20,19 +20,10 @@
 #define _H_DIRENT_
 
 #ifdef _WINDOWS
+struct DIR_sb;
+typedef struct DIR_sb DIR;
 
-#include <windows.h>
-
-#define DIRENT_PATH_MAX			1000
-
-typedef struct {
-
-	wchar_t			wpath[DIRENT_PATH_MAX];
-
-	HANDLE			hDIR;
-	WIN32_FIND_DATAW	fDATA;
-}
-DIR;
+#define DIRENT_PATH_MAX			272
 
 struct dirent
 {
@@ -45,25 +36,18 @@ enum {
 	DT_DIR,
 };
 
-struct stat
-{
-	int		st_mode;
-	LONGLONG	st_size;
-};
-
 DIR *opendir(const char *name);
 int closedir(DIR *d);
 struct dirent *readdir(DIR *d);
 void rewinddir(DIR *d);
-int stat(const char *file, struct stat *sb);
 
 #else /* _WINDOWS */
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#endif /* _WINDOWS */
 
-#endif
+int fstatsize(const char *file, unsigned long long *sb);
 
 #endif /* _H_DIRENT_ */
 

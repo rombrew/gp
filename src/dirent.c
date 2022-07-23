@@ -23,6 +23,15 @@
 #include "dirent.h"
 
 #ifdef _WINDOWS
+#include <windows.h>
+
+struct DIR_sb {
+
+	wchar_t			wpath[DIRENT_PATH_MAX];
+
+	HANDLE			hDIR;
+	WIN32_FIND_DATAW	fDATA;
+};
 
 DIR *opendir(const char *name)
 {
@@ -30,7 +39,7 @@ DIR *opendir(const char *name)
 	DIR		*d = &s_dir;
 	HANDLE		hDIR;
 
-	MultiByteToWideChar(CP_UTF8, 0, name, -1, d->wpath, sizeof(d->wpath));
+	MultiByteToWideChar(CP_UTF8, 0, name, -1, d->wpath, DIRENT_PATH_MAX);
 
 	wcscat(d->wpath, L"/*");
 
@@ -65,13 +74,13 @@ struct dirent *readdir(DIR *d)
 {
 	static struct dirent	s_dirent;
 	struct dirent		*en = &s_dirent;
-	BOOL			bR;
+	BOOL			rc;
 
 	if (d->hDIR != INVALID_HANDLE_VALUE) {
 
-		bR = FindNextFileW(d->hDIR, &d->fDATA);
+		rc = FindNextFileW(d->hDIR, &d->fDATA);
 
-		if (bR == 0) {
+		if (rc == 0) {
 
 			return NULL;
 		}
@@ -104,14 +113,14 @@ void rewinddir(DIR *d)
 	closedir(d);
 }
 
-int stat(const char *file, struct stat *sb)
+int fstatsize(const char *file, unsigned long long *sb)
 {
 	wchar_t			wfile[DIRENT_PATH_MAX];
 	LARGE_INTEGER		nSize = { 0 } ;
 	HANDLE			hFile;
-	BOOL			bR;
+	BOOL			rc;
 
-	MultiByteToWideChar(CP_UTF8, 0, file, -1, wfile, sizeof(wfile));
+	MultiByteToWideChar(CP_UTF8, 0, file, -1, wfile, DIRENT_PATH_MAX);
 
 	hFile = CreateFileW(wfile, 0, 0, NULL, OPEN_EXISTING, 0, NULL);
 
@@ -120,20 +129,34 @@ int stat(const char *file, struct stat *sb)
 		return -1;
 	}
 
-	bR = GetFileSizeEx(hFile, &nSize);
+	rc = GetFileSizeEx(hFile, &nSize);
 
 	CloseHandle(hFile);
 
-	if (bR == 0) {
+	if (rc == 0) {
 
 		return -1;
 	}
 
-	sb->st_mode = 0;
-	sb->st_size = nSize.QuadPart;
+	*sb = nSize.QuadPart;
 
 	return 0;
 }
 
+#else /* _WINDOWS */
+int fstatsize(const char *file, unsigned long long *sb)
+{
+	struct stat		sbs;
+	int			rc;
+
+	rc = stat(file, &sbs);
+
+	if (rc == 0) {
+
+		*sb = sbs.st_size;
+	}
+
+	return rc;
+}
 #endif /* _WINDOWS */
 

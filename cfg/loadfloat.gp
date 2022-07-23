@@ -11,14 +11,14 @@ include "global.gp"
 # <2> Number of lines to allocate appropriate amount of memory. If the file has
 #     more lines the last ones will disappear from plot. Value 0 means automatic
 #     determination based on file size.
-# <3> File type ("text", "float", "double").
+# <3> File format ("text", "float", "double").
 # <4> Number of columns.
 # <5> Name of the file.
 #
 load 0 0 float 24 "data.f"
 #load 0 0 double 200 "data.d"
 
-# If you specify a text file type the remaining parameters will be
+# If you specify a text file format the remaining parameters will be
 # different. The number of columns is not specified but is determined by the
 # content of the file.
 #

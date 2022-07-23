@@ -26,7 +26,7 @@ typedef struct {
 	const char	*global_appearance_menu;
 	const char	*global_data_menu;
 	const char	*global_lang_menu;
-	const char	*dataset_menu[4];
+	const char	*dataset_menu[5];
 
 	const char	*axis_menu;
 	const char	*axis_zoom_menu;
@@ -45,6 +45,7 @@ typedef struct {
 	const char	*file_name_edit;
 	const char	*bit_number_edit;
 	const char	*low_pass_edit;
+	const char	*polynomial_edit;
 	const char	*length_edit;
 	const char	*figure_thickness_edit;
 	const char	*font_size_edit;

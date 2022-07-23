@@ -21,11 +21,11 @@
 #include <string.h>
 #include <errno.h>
 
-#ifdef _WINDOWS
-#define _STAT_DEFINED
-#endif /* _WINDOWS */
-
 #include <SDL2/SDL.h>
+
+#ifdef _WINDOWS
+#include <windows.h>
+#endif /* _WINDOWS */
 
 #include "async.h"
 #include "dirent.h"
@@ -204,6 +204,7 @@ read_t *readAlloc(plot_t *pl)
 	rd->window_size_x = GP_MIN_SIZE_X;
 	rd->window_size_y = GP_MIN_SIZE_Y;
 	rd->antialiasing = DRAW_4X_MSAA;
+	rd->solidfont = 0;
 	rd->thickness = 1;
 	rd->timecol = -1;
 	rd->shortfilename = 0;
@@ -238,12 +239,11 @@ void readClean(read_t *rd)
 }
 
 #ifdef _WINDOWS
-
 void legacy_ACP_to_UTF8(char *ustr, const char *text, int n)
 {
 	wchar_t			wbuf[READ_TOKEN_MAX * READ_COLUMN_MAX];
 
-	MultiByteToWideChar(CP_ACP, 0, text, -1, wbuf, sizeof(wbuf));
+	MultiByteToWideChar(CP_ACP, 0, text, -1, wbuf, sizeof(wbuf) / sizeof(wchar_t));
 	WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, ustr, n, NULL, NULL);
 }
 
@@ -251,7 +251,7 @@ void legacy_OEM_to_UTF8(char *ustr, const char *text, int n)
 {
 	wchar_t			wbuf[READ_TOKEN_MAX * READ_COLUMN_MAX];
 
-	MultiByteToWideChar(CP_OEMCP, 0, text, -1, wbuf, sizeof(wbuf));
+	MultiByteToWideChar(CP_OEMCP, 0, text, -1, wbuf, sizeof(wbuf) / sizeof(wchar_t));
 	WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, ustr, n, NULL, NULL);
 }
 
@@ -261,8 +261,8 @@ legacy_fopen_from_UTF8(const char *file, const char *mode)
 	wchar_t			wfile[READ_FILE_PATH_MAX];
 	wchar_t			wmode[READ_TOKEN_MAX];
 
-	MultiByteToWideChar(CP_UTF8, 0, file, -1, wfile, sizeof(wfile));
-	MultiByteToWideChar(CP_UTF8, 0, mode, -1, wmode, sizeof(wmode));
+	MultiByteToWideChar(CP_UTF8, 0, file, -1, wfile, READ_FILE_PATH_MAX);
+	MultiByteToWideChar(CP_UTF8, 0, mode, -1, wmode, READ_TOKEN_MAX);
 
 	return _wfopen(wfile, wmode);
 }
@@ -273,8 +273,8 @@ legacy_fopen_from_ACP(const char *file, const char *mode)
 	wchar_t			wfile[READ_FILE_PATH_MAX];
 	wchar_t			wmode[READ_TOKEN_MAX];
 
-	MultiByteToWideChar(CP_ACP, 0, file, -1, wfile, sizeof(wfile));
-	MultiByteToWideChar(CP_ACP, 0, mode, -1, wmode, sizeof(wmode));
+	MultiByteToWideChar(CP_ACP, 0, file, -1, wfile, READ_FILE_PATH_MAX);
+	MultiByteToWideChar(CP_ACP, 0, mode, -1, wmode, READ_TOKEN_MAX);
 
 	return _wfopen(wfile, wmode);
 }
@@ -484,7 +484,6 @@ void legacy_readConfigGRM(read_t *rd, const char *confile, const char *file)
 		fclose(fd);
 	}
 }
-
 #endif /* _WINDOWS */
 
 FILE *unified_fopen(const char *file, const char *mode)
@@ -597,7 +596,6 @@ TEXT_GetLabel(read_t *rd, int dN)
 	int		N = 0, m = 0;
 
 #ifdef _WINDOWS
-
 	if (rd->legacy_label_enc == 1) {
 
 		legacy_ACP_to_UTF8(s, s, sizeof(rd->data[dN].buf));
@@ -606,7 +604,6 @@ TEXT_GetLabel(read_t *rd, int dN)
 
 		legacy_OEM_to_UTF8(s, s, sizeof(rd->data[dN].buf));
 	}
-
 #endif /* _WINDOWS */
 
 	while (*s != 0) {
@@ -769,17 +766,17 @@ TEXT_GetCN(read_t *rd, int dN, FILE *fd, fval_t *rbuf)
 	return cN;
 }
 
-static filesize_t
+static ulen_t
 FILE_GetSize(const char *file)
 {
-	struct stat	sb;
+	unsigned long long	sb;
 
-	if (stat(file, &sb) != 0) {
+	if (fstatsize(file, &sb) != 0) {
 
-		sb.st_size = 0;
+		sb = 0U;
 	}
 
-	return (filesize_t) sb.st_size;
+	return (ulen_t) sb;
 }
 
 static void
@@ -802,7 +799,7 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 {
 	fval_t		rbuf[READ_COLUMN_MAX * 3];
 	FILE		*fd;
-	filesize_t	sF = 0;
+	ulen_t		sF = 0U;
 
 	if (rd->data[dN].fd != NULL) {
 
@@ -872,7 +869,6 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 		}
 
 #ifdef _WINDOWS
-
 		else if (fmt == FORMAT_BINARY_LEGACY_V1) {
 
 			lN = (lN < 1) ? (sF - 6) / (cN * 6) : lN;
@@ -887,7 +883,6 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 
 			fseek(fd, 4UL, SEEK_SET);
 		}
-
 #endif /* _WINDOWS */
 
 		plotDataAlloc(rd->pl, dN, cN, lN + 1);
@@ -1036,7 +1031,6 @@ DOUBLE_Read(read_t *rd, int dN)
 }
 
 #ifdef _WINDOWS
-
 static int
 LEGACY_Read(read_t *rd, int dN)
 {
@@ -1074,7 +1068,6 @@ LEGACY_Read(read_t *rd, int dN)
 
 	return 0;
 }
-
 #endif /* _WINDOWS */
 
 int readUpdate(read_t *rd)
@@ -1083,7 +1076,7 @@ int readUpdate(read_t *rd)
 	int		dN, bN;
 	int		file_N = 0;
 	int		ulN = 0;
-	int		tTOP, tNOW;
+	int		tTOP;
 
 	for (dN = 0; dN < PLOT_DATASET_MAX; ++dN) {
 
@@ -1150,10 +1143,8 @@ int readUpdate(read_t *rd)
 
 					plotDataGrowUp(rd->pl, dN);
 				}
-
-				tNOW = SDL_GetTicks();
 			}
-			while (tNOW < tTOP);
+			while (SDL_GetTicks() < tTOP);
 
 			plotDataSubtract(rd->pl, dN, -1);
 		}
@@ -1604,6 +1595,27 @@ configParseFSM(read_t *rd, parse_t *pa)
 				}
 				while (0);
 			}
+			else if (strcmp(tbuf, "solidfont") == 0) {
+
+				failed = 1;
+
+				do {
+					r = configLexerFSM(rd, pa);
+
+					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
+					else break;
+
+					if (argi[0] >= 0 && argi[0] <= 1) {
+
+						failed = 0;
+						rd->solidfont = argi[0];
+					}
+					else {
+						sprintf(msg_tbuf, "invalid solidfont %i", argi[0]);
+					}
+				}
+				while (0);
+			}
 			else if (strcmp(tbuf, "thickness") == 0) {
 
 				failed = 1;
@@ -1719,6 +1731,33 @@ configParseFSM(read_t *rd, parse_t *pa)
 				}
 				while (0);
 			}
+			else if (strcmp(tbuf, "lz4_compress") == 0) {
+
+				failed = 1;
+
+				do {
+					r = configLexerFSM(rd, pa);
+
+					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
+					else break;
+
+					if (rd->bind_N != -1) {
+
+						sprintf(msg_tbuf, "unable if dataset was already opened");
+						break;
+					}
+
+					if (argi[0] >= 0 && argi[0] < 2) {
+
+						failed = 0;
+						rd->pl->lz4_compress = argi[0];
+					}
+					else {
+						sprintf(msg_tbuf, "invalid lz4_compress %i", argi[0]);
+					}
+				}
+				while (0);
+			}
 			else if (strcmp(tbuf, "load") == 0 || strcmp(tbuf, "follow") == 0) {
 
 				failed = 1;
@@ -1760,7 +1799,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 							argi[2] = FORMAT_BINARY_DOUBLE;
 						}
 						else {
-							sprintf(msg_tbuf, "invalid file type \"%.80s\"", tbuf);
+							sprintf(msg_tbuf, "invalid file format \"%.80s\"", tbuf);
 							break;
 						}
 					}
@@ -2238,7 +2277,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 						else if (strcmp(tbuf, "dot") == 0)
 							argi[0] = FIGURE_DRAWING_DOT;
 						else {
-							sprintf(msg_tbuf, "invalid drawing type \"%.80s\"", tbuf);
+							sprintf(msg_tbuf, "invalid drawing \"%.80s\"", tbuf);
 							break;
 						}
 					}
@@ -2506,13 +2545,93 @@ void readMakePages(read_t *rd, int dN, int cX, int fromUI)
 	}
 }
 
+void readDatasetClean(read_t *rd, int dN)
+{
+	page_t		*pg;
+	int		N, pN, pW, fN;
+
+	if (dN < 0 || dN >= PLOT_DATASET_MAX) {
+
+		ERROR("Dataset number is out of range\n");
+		return ;
+	}
+
+	pN = 1;
+
+	do {
+		if (rd->page[pN].busy != 0) {
+
+			pg = rd->page + pN;
+
+			for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
+
+				if (pg->fig[fN].dN == dN)
+					pg->fig[fN].busy = 0;
+			}
+
+			N = 0;
+
+			for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
+
+				if (pg->fig[fN].busy != 0)
+					++N;
+			}
+
+			if (N == 0) {
+
+				memset(&rd->page[pN], 0, sizeof(rd->page[0]));
+			}
+		}
+
+		pN += 1;
+
+		if (pN >= READ_PAGE_MAX)
+			break;
+	}
+	while (1);
+
+	pN = 1;
+	pW = 1;
+
+	do {
+		if (rd->page[pN].busy != 0) {
+
+			if (pN != pW) {
+
+				memcpy(&rd->page[pW], &rd->page[pN], sizeof(rd->page[0]));
+				memset(&rd->page[pN], 0, sizeof(rd->page[0]));
+			}
+
+			pW += 1;
+		}
+
+		pN += 1;
+
+		if (pN >= READ_PAGE_MAX)
+			break;
+	}
+	while (1);
+
+	if (rd->data[dN].fd != NULL) {
+
+		readClose(rd, dN);
+	}
+
+	memset(&rd->data[dN], 0, sizeof(rd->data[0]));
+
+	plotFigureGarbage(rd->pl, dN);
+
+	plotDataRangeCacheClean(rd->pl, dN);
+	plotDataClean(rd->pl, dN);
+}
+
 int readGetTimeColumn(read_t *rd, int dN)
 {
 	page_t		*pg;
 	int		cNP, pN;
 
 	cNP = -2;
-	pN = 0;
+	pN = 1;
 
 	if (dN < 0 || dN >= PLOT_DATASET_MAX) {
 
@@ -2560,7 +2679,7 @@ void readSetTimeColumn(read_t *rd, int dN, int cX)
 	}
 
 	cNP = -2;
-	pN = 0;
+	pN = 1;
 
 	do {
 		if (rd->page[pN].busy == 2) {
@@ -2611,6 +2730,12 @@ timeDataMap(plot_t *pl, int dN, int cN)
 		return cN;
 	}
 
+	if (pl->data[dN].map == NULL) {
+
+		ERROR("Dataset number %i was not allocated\n", dN);
+		return cN;
+	}
+
 	gN = pl->data[dN].map[cN];
 
 	if (gN != -1) {
@@ -2644,6 +2769,12 @@ scaleDataMap(plot_t *pl, int dN, int cN, fig_ops_t *ops)
 	if (cN < -1 || cN >= pl->data[dN].column_N + PLOT_SUBTRACT) {
 
 		ERROR("Column number %i is out of range\n", cN);
+		return cN;
+	}
+
+	if (pl->data[dN].map == NULL) {
+
+		ERROR("Dataset number %i was not allocated\n", dN);
 		return cN;
 	}
 

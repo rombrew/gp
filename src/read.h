@@ -28,9 +28,9 @@
 #include "plot.h"
 
 #define READ_PAGE_MAX		1000
-#define READ_COLUMN_MAX		1000
+#define READ_COLUMN_MAX		2000
 #define READ_TOKEN_MAX		80
-#define READ_FILE_PATH_MAX	1000
+#define READ_FILE_PATH_MAX	800
 #define READ_TEXT_HEADER_MAX	9
 
 #define GP_MIN_SIZE_X		640
@@ -55,7 +55,7 @@ enum {
 	DATA_HINT_OCT
 };
 
-typedef unsigned long long	filesize_t;
+typedef unsigned long long	ulen_t;
 
 typedef struct {
 
@@ -135,6 +135,7 @@ typedef struct {
 	int		language;
 	int		colorscheme;
 	int		antialiasing;
+	int		solidfont;
 	int		thickness;
 	int		timecol;
 	int		shortfilename;
@@ -160,9 +161,10 @@ typedef struct {
 		int		length_N;
 
 		char		file[READ_FILE_PATH_MAX];
+		int		line_N;
+
 		FILE		*fd;
 		async_FILE	*afd;
-		int		line_N;
 
 		char		buf[READ_TOKEN_MAX * READ_COLUMN_MAX];
 		fval_t		row[READ_COLUMN_MAX];
@@ -201,6 +203,7 @@ void readConfigGP(read_t *rd, const char *file);
 int readValidate(read_t *rd);
 
 void readMakePages(read_t *rd, int dN, int cX, int fromUI);
+void readDatasetClean(read_t *rd, int dN);
 int readGetTimeColumn(read_t *rd, int dN);
 void readSetTimeColumn(read_t *rd, int dN, int cX);
 

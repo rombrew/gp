@@ -23,13 +23,13 @@
 #include <string.h>
 #include <locale.h>
 
-#ifdef _WINDOWS
-#define _STAT_DEFINED
-#endif /* _WINDOWS */
-
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_image.h>
+
+#ifdef _WINDOWS
+#include <windows.h>
+#endif /* _WINDOWS */
 
 #include "dirent.h"
 #include "draw.h"
@@ -214,7 +214,6 @@ gpFileGetPath(gp_t *gp)
 	char		*home;
 
 #ifdef _WINDOWS
-
 	home = getenv("APPDATA");
 
 	if (home != NULL) {
@@ -222,7 +221,6 @@ gpFileGetPath(gp_t *gp)
 		legacy_ACP_to_UTF8(gp->rcfile, home, READ_FILE_PATH_MAX);
 		strcat(gp->rcfile, "/_gprc");
 	}
-
 #else /* _WINDOWS */
 
 	home = getenv("HOME");
@@ -265,11 +263,13 @@ gpDefaultFile(gp_t *gp)
 				"language 0\n"
 				"colorscheme 0\n"
 				"antialiasing 1\n"
+				"solidfont 0\n"
 				"thickness 1\n"
 				"drawing line 2\n"
 				"timecol -1\n"
 				"shortfilename 1\n"
-				"precision 9\n");
+				"precision 9\n"
+				"lz4_compress 1\n");
 
 #ifdef _WINDOWS
 		fprintf(fd,	"legacy_label_enc 0\n");
@@ -282,9 +282,9 @@ gpDefaultFile(gp_t *gp)
 static int
 gpFileExist(const char *file)
 {
-	struct stat	sb;
+	unsigned long long		sb;
 
-	return (stat(file, &sb) == 0) ? 1 : 0;
+	return (fstatsize(file, &sb) == 0) ? 1 : 0;
 }
 
 static int
@@ -450,11 +450,11 @@ gpMakeDirMenu(gp_t *gp)
 	char			sfmt[PLOT_STRING_MAX];
 	DIR			*dir;
 	struct dirent 		*en;
-	struct stat		sb;
+	unsigned long long	sb;
 	char			*la = gp->la_menu;
-	int			avail, pad, eN, kmg;
+	int			menulen, pad, eN, kmg;
 
-	avail = gpScreenLength(gp->pl) - gp->layout_menu_dir_margin;
+	menulen = gpScreenLength(gp->pl) - gp->layout_menu_dir_margin;
 
 	dir = opendir(gp->current_dir);
 
@@ -472,7 +472,7 @@ gpMakeDirMenu(gp_t *gp)
 	strcpy(la, gp->sbuf[0]);
 	la += strlen(la) + 1;
 
-	gpTextSepFill(gp->sbuf[0], avail + 7);
+	gpTextSepFill(gp->sbuf[0], menulen + 7);
 
 	strcpy(la, gp->sbuf[0]);
 	la += strlen(la) + 1;
@@ -503,7 +503,7 @@ gpMakeDirMenu(gp_t *gp)
 						gpTextLeftCrop(gp->pl, gp->sbuf[1], en->d_name,
 								gp->layout_menu_dir_margin);
 
-						pad = avail - utf8_length(gp->sbuf[1]);
+						pad = menulen - utf8_length(gp->sbuf[1]);
 
 						sprintf(sfmt, "/%%s%%%ds", pad);
 						sprintf(gp->sbuf[0], sfmt, gp->sbuf[1], "");
@@ -536,26 +536,26 @@ gpMakeDirMenu(gp_t *gp)
 
 					kmg = 0;
 
-					if (stat(gp->sbuf[0], &sb) == 0) {
+					if (fstatsize(gp->sbuf[0], &sb) == 0) {
 
-						while (sb.st_size >= 1024) {
+						while (sb >= 1024U) {
 
-							sb.st_size /= 1024;
+							sb /= 1024U;
 							++kmg;
 						}
 					}
 					else {
-						sb.st_size = 0;
+						sb = 0U;
 					}
 
 					gpTextLeftCrop(gp->pl, gp->sbuf[1], en->d_name,
 							gp->layout_menu_dir_margin);
 
-					pad = avail - utf8_length(gp->sbuf[1]);
+					pad = menulen - utf8_length(gp->sbuf[1]);
 
-					sprintf(sfmt, " %%s%%%ds %%4d%%c", pad);
+					sprintf(sfmt, " %%s%%%ds %%4d %%cb", pad);
 					sprintf(gp->sbuf[0], sfmt, gp->sbuf[1], "",
-							(int) sb.st_size, " KMG" [kmg]);
+							(int) sb, " KMG??" [kmg]);
 
 					strcpy(la, gp->sbuf[0]);
 					la += strlen(la) + 1;
@@ -723,7 +723,11 @@ gpInsertDataset(gp_t *gp, char **la, int dN)
 
 	gpTextLeftCrop(gp->pl, gp->sbuf[1], file, gp->layout_menu_dataset_margin);
 
-	if (rd->data[dN].format == FORMAT_PLAIN_TEXT) {
+	if (rd->data[dN].format == FORMAT_NONE) {
+
+		sformat = "NONE  ";
+	}
+	else if (rd->data[dN].format == FORMAT_PLAIN_TEXT) {
 
 		sformat = "TEXT  ";
 	}
@@ -736,7 +740,7 @@ gpInsertDataset(gp_t *gp, char **la, int dN)
 		sformat = "DOUBLE";
 	}
 	else {
-		sformat = "UNDEF ";
+		sformat = "LEGACY";
 	}
 
 	sprintf(gp->sbuf[0], "[%2i] %6s %s", dN, sformat, gp->sbuf[1]);
@@ -767,7 +771,7 @@ gpMakeColumnSelectMenu(gp_t *gp, int dN)
 			sN = cN - rd->data[dN].column_N;
 
 			sprintf(gp->sbuf[0], "* [%1i] %c ", sN,
-					" USRAMHDCBLT" [gp->pl->data[dN].sub[sN].busy]);
+					" USRAMHDCBLTP??" [gp->pl->data[dN].sub[sN].busy]);
 
 			if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_TIME_UNWRAP) {
 
@@ -813,7 +817,13 @@ gpMakeColumnSelectMenu(gp_t *gp, int dN)
 						gp->pl->data[dN].sub[sN].op.resample.column_X,
 						gp->pl->data[dN].sub[sN].op.resample.column_in_X,
 						gp->pl->data[dN].sub[sN].op.resample.column_in_Y,
-						gp->pl->data[dN].sub[sN].op.resample.in_dN);
+						gp->pl->data[dN].sub[sN].op.resample.in_data_N);
+			}
+			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_POLYFIT) {
+
+				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %i)",
+						gp->pl->data[dN].sub[sN].op.polyfit.column_X,
+						gp->pl->data[dN].sub[sN].op.polyfit.poly_N);
 			}
 
 			strcpy(la, gp->sbuf[0]);
@@ -829,15 +839,17 @@ gpMakeColumnSelectMenu(gp_t *gp, int dN)
 static void
 gpMakeDatasetSelectMenu(gp_t *gp)
 {
-	read_t		*rd = gp->rd;
 	char		*la = gp->la_menu;
-	int		dN = 0;
+	int		dN = 0, menulen, fnlen, fnlen_max;
+
+	menulen = gpScreenLength(gp->pl) - gp->layout_menu_dataset_margin;
+	fnlen_max = 0;
 
 	do {
-		if (rd->data[dN].format != FORMAT_NONE) {
+		gpInsertDataset(gp, &la, dN);
 
-			gpInsertDataset(gp, &la, dN);
-		}
+		fnlen = utf8_length(gp->sbuf[0]);
+		fnlen_max = (fnlen_max < fnlen) ? fnlen : fnlen_max;
 
 		dN += 1;
 
@@ -845,6 +857,11 @@ gpMakeDatasetSelectMenu(gp_t *gp)
 			break;
 	}
 	while (1);
+
+	gpTextSepFill(gp->sbuf[1], (fnlen_max > menulen) ? fnlen_max : menulen);
+
+	strcpy(la, gp->sbuf[1]);
+	la += strlen(la) + 1;
 
 	*la = 0;
 }
@@ -855,75 +872,98 @@ gpMakeDatasetMenu(gp_t *gp)
 	plot_t		*pl = gp->pl;
 	read_t		*rd = gp->rd;
 	char		*la = gp->la_menu;
-	int		cN, gN, dN, bUSAGE;
+	int		N, cN, gN, dN, mbUSAGE, mbUNC, lzPC, menulen, fnlen;
+
+	menulen = gpScreenLength(gp->pl) - gp->layout_menu_dataset_margin;
 
 	dN = gp->data_N;
 
-	if (rd->data[dN].format != FORMAT_NONE) {
+	if (rd->data[dN].format == FORMAT_NONE) {
 
-		gpInsertDataset(gp, &la, dN);
+		for (N = 0; N < PLOT_DATASET_MAX; ++N) {
 
-		gpTextSepFill(gp->sbuf[1], utf8_length(gp->sbuf[0]));
+			if (rd->data[N].format != FORMAT_NONE) {
 
-		strcpy(la, gp->sbuf[1]);
-		la += strlen(la) + 1;
-
-		cN = readGetTimeColumn(rd, dN);
-
-		sprintf(gp->sbuf[0], gp->la->dataset_menu[0], cN);
-		strcpy(la, gp->sbuf[0]);
-		la += strlen(la) + 1;
-
-		strcpy(gp->sbuf[2], " ");
-		strcpy(gp->sbuf[3], "   ");
-
-		if (cN >= -1) {
-
-			gN = pl->data[gp->data_N].map[cN];
-
-			if (gN >= 0 && gN < PLOT_GROUP_MAX) {
-
-				if (pl->group[gN].op_time_unwrap != 0) {
-
-					strcpy(gp->sbuf[2], "X");
-				}
-
-				if (pl->group[gN].op_scale != 0) {
-
-					gpTextFloat(pl, gp->sbuf[3], pl->group[gN].scale);
-					gpTextFloat(pl, gp->sbuf[0], pl->group[gN].offset);
-
-					strcat(gp->sbuf[3], " ");
-					strcat(gp->sbuf[3], gp->sbuf[0]);
-				}
+				dN = N;
+				break;
 			}
 		}
 
-		sprintf(gp->sbuf[0], gp->la->dataset_menu[1], gp->sbuf[2]);
-		strcpy(la, gp->sbuf[0]);
-		la += strlen(la) + 1;
+		gp->data_N = dN;
+	}
 
-		sprintf(gp->sbuf[0], gp->la->dataset_menu[2], gp->sbuf[3]);
-		strcpy(la, gp->sbuf[0]);
-		la += strlen(la) + 1;
+	gpInsertDataset(gp, &la, dN);
 
-		bUSAGE = plotDataMemoryUsage(pl, dN) / 1048576UL;
+	fnlen = utf8_length(gp->sbuf[0]);
 
-		sprintf(gp->sbuf[0], gp->la->dataset_menu[3], rd->data[dN].length_N, bUSAGE);
-		strcpy(la, gp->sbuf[0]);
-		la += strlen(la) + 1;
+	gpTextSepFill(gp->sbuf[1], (fnlen > menulen) ? fnlen : menulen);
 
-		strcpy(la, gp->sbuf[1]);
-		la += strlen(la) + 1;
+	strcpy(la, gp->sbuf[1]);
+	la += strlen(la) + 1;
 
-		cN = 0;
+	cN = readGetTimeColumn(rd, dN);
 
-		while (cN < rd->data[dN].column_N) {
+	sprintf(gp->sbuf[0], gp->la->dataset_menu[0], cN);
+	strcpy(la, gp->sbuf[0]);
+	la += strlen(la) + 1;
 
-			gpInsertColumn(gp, &la, dN, cN);
+	strcpy(gp->sbuf[2], " ");
+	strcpy(gp->sbuf[3], "   ");
 
-			cN += 1;
+	if (cN >= -1 && pl->data[dN].map != NULL) {
+
+		gN = pl->data[dN].map[cN];
+
+		if (gN >= 0 && gN < PLOT_GROUP_MAX) {
+
+			if (pl->group[gN].op_time_unwrap != 0) {
+
+				strcpy(gp->sbuf[2], "X");
+			}
+
+			if (pl->group[gN].op_scale != 0) {
+
+				gpTextFloat(pl, gp->sbuf[3], pl->group[gN].scale);
+				gpTextFloat(pl, gp->sbuf[0], pl->group[gN].offset);
+
+				strcat(gp->sbuf[3], " ");
+				strcat(gp->sbuf[3], gp->sbuf[0]);
+			}
 		}
+	}
+
+	sprintf(gp->sbuf[0], gp->la->dataset_menu[1], gp->sbuf[2]);
+	strcpy(la, gp->sbuf[0]);
+	la += strlen(la) + 1;
+
+	sprintf(gp->sbuf[0], gp->la->dataset_menu[2], gp->sbuf[3]);
+	strcpy(la, gp->sbuf[0]);
+	la += strlen(la) + 1;
+
+	mbUSAGE = plotDataMemoryUsage(pl, dN) / 1048576UL;
+	mbUNC = plotDataMemoryUncompressed(pl, dN) / 1048576UL;
+
+	lzPC = (mbUNC != 0) ? 100U * mbUSAGE / mbUNC : 0;
+
+	sprintf(gp->sbuf[0], gp->la->dataset_menu[3],
+			rd->data[dN].length_N, mbUSAGE, lzPC);
+
+	strcpy(la, gp->sbuf[0]);
+	la += strlen(la) + 1;
+
+	strcpy(la, gp->la->dataset_menu[4]);
+	la += strlen(la) + 1;
+
+	strcpy(la, gp->sbuf[1]);
+	la += strlen(la) + 1;
+
+	cN = 0;
+
+	while (cN < rd->data[dN].column_N) {
+
+		gpInsertColumn(gp, &la, dN, cN);
+
+		cN += 1;
 	}
 
 	*la = 0;
@@ -1057,8 +1097,6 @@ gpTakeScreen(gp_t *gp)
 }
 
 #ifdef _WINDOWS
-#include <windows.h>
-
 void legacy_SetClipboard(SDL_Surface *surface)
 {
 	long		length = 9437184UL;
@@ -1102,7 +1140,6 @@ void legacy_SetClipboard(SDL_Surface *surface)
 		GlobalFree(hDIB);
 	}
 }
-
 #endif /* _WINDOWS */
 
 static void
@@ -1190,21 +1227,24 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 						:  (pl->layout_font_ttf == TTF_ID_ROBOTO_MONO_THIN) ? "Thin   " : "       ";
 				mu->mark[2].N = 2;
 				mu->mark[2].subs = (dw->antialiasing == DRAW_4X_MSAA)  ? "4x MSAA"
-						:  (dw->antialiasing == DRAW_8X_MSAA)  ? "8x MSAA" : "       ";
+						:  (dw->antialiasing == DRAW_8X_MSAA)  ? "8x MSAA" : "Solid  ";
+
+				mu->mark[3].N = 3;
+				mu->mark[3].subs = (dw->solidfont != 0)  ? "Solid  " : "Blended";
 
 				sprintf(gp->sbuf[3], "%i      ", dw->thickness);
 
-				mu->mark[3].N = 3;
-				mu->mark[3].subs = gp->sbuf[3];
-
 				mu->mark[4].N = 4;
-				mu->mark[4].subs = (gp->hinting == 1) ? "Light  "
+				mu->mark[4].subs = gp->sbuf[3];
+
+				mu->mark[5].N = 5;
+				mu->mark[5].subs = (gp->hinting == 1) ? "Light  "
 						:  (gp->hinting == 2) ? "Normal " : "       ";
 
 				sprintf(gp->sbuf[2], "%2i     ", pl->layout_font_pt);
 
-				mu->mark[5].N = 5;
-				mu->mark[5].subs = gp->sbuf[2];
+				mu->mark[6].N = 6;
+				mu->mark[6].subs = gp->sbuf[2];
 
 				gp->stat = GP_MENU;
 				break;
@@ -1218,31 +1258,46 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 			case 5:
 				gpMakePageMenu(gp);
 
-				menuRaise(mu, 9, gp->la_menu, mu->box_X, mu->box_Y);
-				menuSelect(mu, rd->page_N);
-				mu->hidden_N[0] = rd->page_N - 1;
-				gp->combine_on = 0;
-				gp->stat = GP_MENU;
+				if (strlen(gp->la_menu) > 0) {
+
+					menuRaise(mu, 9, gp->la_menu, mu->box_X, mu->box_Y);
+					menuSelect(mu, rd->page_N);
+
+					mu->hidden_N[0] = rd->page_N - 1;
+					gp->combine_on = 0;
+
+					gp->stat = GP_MENU;
+				}
 				break;
 
 			case 6:
 				gpMakePageMenu(gp);
 
-				menuRaise(mu, 9, gp->la_menu, mu->box_X, mu->box_Y);
-				menuSelect(mu, rd->page_N);
-				mu->hidden_N[0]= rd->page_N - 1;
-				gp->combine_on = 1;
-				gp->stat = GP_MENU;
+				if (strlen(gp->la_menu) > 0) {
+
+					menuRaise(mu, 9, gp->la_menu, mu->box_X, mu->box_Y);
+					menuSelect(mu, rd->page_N);
+
+					mu->hidden_N[0]= rd->page_N - 1;
+					gp->combine_on = 1;
+
+					gp->stat = GP_MENU;
+				}
 				break;
 
 			case 7:
 				gpMakePageMenu(gp);
 
-				menuRaise(mu, 9, gp->la_menu, mu->box_X, mu->box_Y);
-				menuSelect(mu, rd->page_N);
-				mu->hidden_N[0] = rd->page_N - 1;
-				gp->combine_on = 2;
-				gp->stat = GP_MENU;
+				if (strlen(gp->la_menu) > 0) {
+
+					menuRaise(mu, 9, gp->la_menu, mu->box_X, mu->box_Y);
+					menuSelect(mu, rd->page_N);
+
+					mu->hidden_N[0] = rd->page_N - 1;
+					gp->combine_on = 2;
+
+					gp->stat = GP_MENU;
+				}
 				break;
 
 			case 8:
@@ -1262,7 +1317,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 					plotSliceTrack(pl, gp->cur_X, gp->cur_Y);
 				}
 				else {
-					pl->data_box_on = 0;
+					pl->data_box_on = DATA_BOX_FREE;
 					pl->slice_on = 0;
 					pl->slice_range_on = 0;
 				}
@@ -1496,17 +1551,28 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 					gp->stat = GP_EDIT;
 					break;
 
-				case 1:
 				case 6:
+					readDatasetClean(rd, gp->data_N);
+
+					gpMakeDatasetMenu(gp);
+
+					menuResume(mu);
+					menuLayout(mu);
+
+					gp->stat = GP_MENU;
+					break;
+
+				case 1:
+				case 7:
 					menuResume(mu);
 					gp->stat = GP_MENU;
 					break;
 
 				default:
 
-					if (item_N >= 7) {
+					if (item_N >= 8) {
 
-						readToggleHint(rd, gp->data_N, item_N - 7);
+						readToggleHint(rd, gp->data_N, item_N - 8);
 					}
 
 					gpMakeDatasetMenu(gp);
@@ -1523,7 +1589,11 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 		if (item_N != -1) {
 
-			gp->data_N = item_N;
+			if (		item_N < PLOT_DATASET_MAX
+					&& item_N >= 0) {
+
+				gp->data_N = item_N;
+			}
 
 			gpMakeDatasetMenu(gp);
 
@@ -1580,19 +1650,23 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 			case 2:
 				dw->antialiasing = (dw->antialiasing < DRAW_8X_MSAA)
-					? dw->antialiasing + 1 : DRAW_NONE;
+					? dw->antialiasing + 1 : DRAW_SOLID;
 				break;
 
 			case 3:
-				dw->thickness = (dw->thickness < 2) ? dw->thickness + 1 : 0;
+				dw->solidfont = (dw->solidfont != 0) ? 0 : 1;
 				break;
 
 			case 4:
+				dw->thickness = (dw->thickness < 2) ? dw->thickness + 1 : 0;
+				break;
+
+			case 5:
 				gp->hinting = (gp->hinting < 2) ? gp->hinting + 1 : 0;
 				gpFontHinting(gp);
 				break;
 
-			case 5:
+			case 6:
 				sprintf(gp->sbuf[0], "%i", pl->layout_font_pt);
 
 				editRaise(ed, 15, gp->la->font_size_edit,
@@ -1609,14 +1683,15 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 			mu->mark[1].subs = (pl->layout_font_ttf == TTF_ID_ROBOTO_MONO_NORMAL) ? "Normal "
 					:  (pl->layout_font_ttf == TTF_ID_ROBOTO_MONO_THIN) ? "Thin   " : "       ";
 			mu->mark[2].subs = (dw->antialiasing == DRAW_4X_MSAA)  ? "4x MSAA"
-					:  (dw->antialiasing == DRAW_8X_MSAA)  ? "8x MSAA" : "       ";
+					:  (dw->antialiasing == DRAW_8X_MSAA)  ? "8x MSAA" : "Solid  ";
+			mu->mark[3].subs = (dw->solidfont != 0)  ? "Solid  " : "Blended";
 
 			sprintf(gp->sbuf[3], "%i      ", dw->thickness);
 
-			mu->mark[3].N = 3;
-			mu->mark[3].subs = gp->sbuf[3];
+			mu->mark[4].N = 4;
+			mu->mark[4].subs = gp->sbuf[3];
 
-			mu->mark[4].subs = (gp->hinting == 1) ? "Light  "
+			mu->mark[5].subs = (gp->hinting == 1) ? "Light  "
 					:  (gp->hinting == 2) ? "Normal " : "       ";
 
 			menuResume(mu);
@@ -1873,6 +1948,13 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 			case 11:
 				editRaise(ed, 13, gp->la->low_pass_edit,
 						"0.1", mu->box_X, mu->box_Y);
+
+				gp->stat = GP_EDIT;
+				break;
+
+			case 12:
+				editRaise(ed, 16, gp->la->polynomial_edit,
+						"1", mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
@@ -2235,13 +2317,21 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 			sprintf(gp->sbuf[2], "%2i     ", pl->layout_font_pt);
 
-			mu->mark[5].N = 5;
-			mu->mark[5].subs = gp->sbuf[2];
+			mu->mark[6].subs = gp->sbuf[2];
 
 			menuResume(mu);
 			menuLayout(mu);
 
 			gp->stat = GP_MENU;
+		}
+	}
+	else if (edit_N == 16) {
+
+		n = sscanf(text, "%i", &len);
+
+		if (n == 1) {
+
+			plotFigureSubtractPolifit(pl, gp->fig_N, len);
 		}
 	}
 }
@@ -2724,7 +2814,7 @@ gpEventHandle(gp_t *gp)
 				plotSliceTrack(pl, gp->cur_X, gp->cur_Y);
 			}
 
-			if (pl->data_box_on != 0) {
+			if (pl->data_box_on != DATA_BOX_FREE) {
 
 				plotDataBoxGetByClick(pl, gp->cur_X, gp->cur_Y);
 			}
@@ -3246,7 +3336,7 @@ gpDrawBoxSelect(SDL_Surface *surface, gp_t *gp)
 static void
 gpFPSUpdate(gp_t *gp)
 {
-	gp->i_frames++;
+	gp->i_frames += 1;
 
 	if (gp->i_clocked < gp->clock) {
 
@@ -3270,7 +3360,6 @@ gpFileIsGP(gp_t *gp, const char *file)
 }
 
 #ifdef _WINDOWS
-
 static int
 legacy_FileIsBAT(gp_t *gp, const char *file)
 {
@@ -3327,7 +3416,6 @@ legacy_FileOpenBAT(gp_t *gp, const char *file)
 		fclose(fd);
 	}
 }
-
 #endif /* _WINDOWS */
 
 int main(int argn, char *argv[])
@@ -3403,13 +3491,11 @@ int main(int argn, char *argv[])
 	N = 0;
 
 #ifdef _WINDOWS
-
 	if (argn >= 3) {
 
 		legacy_readConfigGRM(rd, argv[1], argv[2]);
 	}
 	else
-
 #endif /* _WINDOWS */
 
 	if (argn == 2) {
@@ -3434,12 +3520,10 @@ int main(int argn, char *argv[])
 		}
 
 #ifdef _WINDOWS
-
 		else if (legacy_FileIsBAT(gp, gp->tempfile) != 0) {
 
 			legacy_FileOpenBAT(gp, gp->tempfile);
 		}
-
 #endif /* _WINDOWS */
 
 		else if (strcmp(gp->tempfile, "STDIN") == 0) {
@@ -3489,6 +3573,7 @@ int main(int argn, char *argv[])
 	gp->hinting = 2;
 
 	dw->antialiasing = rd->antialiasing;
+	dw->solidfont = rd->solidfont;
 	dw->thickness = rd->thickness;
 
 	gpFontHinting(gp);
@@ -3617,7 +3702,7 @@ int main(int argn, char *argv[])
 
 			gpFPSUpdate(gp);
 
-			if (pl->draw_interrupt == 0) {
+			if (pl->draw_in_progress == 0) {
 
 				gp->unfinished = 0;
 			}

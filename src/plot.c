@@ -23,8 +23,11 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 
+#include "lz4/lz4.h"
+
 #include "plot.h"
 #include "draw.h"
+#include "lse.h"
 #include "scheme.h"
 
 extern SDL_RWops *TTF_RW_roboto_mono_normal();
@@ -55,14 +58,27 @@ int fp_isfinite(double x)
 plot_t *plotAlloc(draw_t *dw, scheme_t *sch)
 {
 	plot_t		*pl;
+	int		N;
 
 	pl = calloc(1, sizeof(plot_t));
 
 	pl->dw = dw;
 	pl->sch = sch;
 
-	pl->layout_font_long = 11;
+	for (N = 0; N < PLOT_SKETCH_MAX - 1; ++N)
+		pl->sketch[N].linked = N + 1;
 
+	pl->sketch[PLOT_SKETCH_MAX - 1].linked = -1;
+
+	pl->sketch_list_garbage = 0;
+	pl->sketch_list_todraw = -1;
+	pl->sketch_list_current = -1;
+	pl->sketch_list_current_end = -1;
+
+	for (N = 0; N < PLOT_FIGURE_MAX; ++N)
+		pl->draw[N].list_self = -1;
+
+	pl->layout_font_long = 11;
 	pl->layout_border = 5;
 	pl->layout_tick_tooth = 5;
 	pl->layout_grid_dash = 2;
@@ -77,6 +93,7 @@ plot_t *plotAlloc(draw_t *dw, scheme_t *sch)
 	pl->default_width = 2;
 	pl->transparency_mode = 1;
 	pl->fprecision = 9;
+	pl->lz4_compress = 0;
 
 	return pl;
 }
@@ -101,10 +118,16 @@ plotSketchFree(plot_t *pl)
 
 void plotClean(plot_t *pl)
 {
-	drawPixmapClean(pl->dw);
+	int		dN;
 
-	plotDataClean(pl);
+	drawPixmapClean(pl->dw);
 	plotSketchFree(pl);
+
+	for (dN = 0; dN < PLOT_DATASET_MAX; ++dN) {
+
+		if (pl->data[dN].column_N != 0)
+			plotDataClean(pl, dN);
+	}
 
 	free(pl);
 }
@@ -180,10 +203,8 @@ void plotFontOpen(plot_t *pl, const char *file, int ptsize, int style)
 static void
 plotDataChunkAlloc(plot_t *pl, int dN, int lN)
 {
-	void		*pm;
-	int		N, cN, kN, lSHIFT, bSIZE;
+	int		N, kN, lSHIFT;
 
-	cN = pl->data[dN].column_N;
 	lSHIFT = pl->data[dN].chunk_SHIFT;
 
 	kN = (lN & pl->data[dN].chunk_MASK) ? 1 : 0;
@@ -195,36 +216,43 @@ plotDataChunkAlloc(plot_t *pl, int dN, int lN)
 		lN = kN * (1UL << lSHIFT);
 	}
 
-	bSIZE = sizeof(fval_t) * (cN + PLOT_SUBTRACT) * (1UL << lSHIFT);
+	if (pl->lz4_compress != 0) {
 
-	for (N = 0; N < kN; ++N) {
+		for (N = kN; N < PLOT_CHUNK_MAX; ++N) {
 
-		if (pl->data[dN].raw[N] == NULL) {
+			if (pl->data[dN].compress[N].raw != NULL) {
 
-			pm = malloc(bSIZE);
+				free(pl->data[dN].compress[N].raw);
 
-			if (pm == NULL) {
-
-				lN = N * (1UL << lSHIFT);
-
-				ERROR("Unable to allocate memory of %i dataset\n", dN);
-				break ;
+				pl->data[dN].compress[N].raw = NULL;
 			}
-
-			pl->data[dN].raw[N] = (fval_t *) pm;
 		}
 	}
+	else {
+		for (N = 0; N < kN; ++N) {
 
-	for (N = kN; N < PLOT_CHUNK_MAX; ++N) {
+			if (pl->data[dN].raw[N] == NULL) {
 
-		if (pl->data[dN].raw[N] != NULL) {
+				pl->data[dN].raw[N] = (fval_t *) malloc(pl->data[dN].chunk_bSIZE);
 
-			free(pl->data[dN].raw[N]);
+				if (pl->data[dN].raw[N] == NULL) {
 
-			pl->data[dN].raw[N] = NULL;
+					lN = N * (1UL << lSHIFT);
+
+					ERROR("Unable to allocate memory of %i dataset\n", dN);
+					break;
+				}
+			}
 		}
-		else {
-			break;
+
+		for (N = kN; N < PLOT_CHUNK_MAX; ++N) {
+
+			if (pl->data[dN].raw[N] != NULL) {
+
+				free(pl->data[dN].raw[N]);
+
+				pl->data[dN].raw[N] = NULL;
+			}
 		}
 	}
 
@@ -233,7 +261,7 @@ plotDataChunkAlloc(plot_t *pl, int dN, int lN)
 
 unsigned long long plotDataMemoryUsage(plot_t *pl, int dN)
 {
-	int			N, cN, lSHIFT, bSIZE;
+	int			N;
 	unsigned long long	bUSAGE;
 
 	if (dN < 0 || dN >= PLOT_DATASET_MAX) {
@@ -242,29 +270,199 @@ unsigned long long plotDataMemoryUsage(plot_t *pl, int dN)
 		return 0;
 	}
 
-	cN = pl->data[dN].column_N;
-	lSHIFT = pl->data[dN].chunk_SHIFT;
-
-	bSIZE = sizeof(fval_t) * (cN + PLOT_SUBTRACT) * (1UL << lSHIFT);
 	bUSAGE = 0;
 
 	for (N = 0; N < PLOT_CHUNK_MAX; ++N) {
 
 		if (pl->data[dN].raw[N] != NULL) {
 
-			bUSAGE += bSIZE;
+			bUSAGE += pl->data[dN].chunk_bSIZE;
 		}
-		else {
-			break;
+
+		if (pl->data[dN].compress[N].raw != NULL) {
+
+			bUSAGE += pl->data[dN].compress[N].length;
 		}
 	}
 
 	return bUSAGE;
 }
 
+unsigned long long plotDataMemoryUncompressed(plot_t *pl, int dN)
+{
+	int			N;
+	unsigned long long	bUSAGE;
+
+	if (dN < 0 || dN >= PLOT_DATASET_MAX) {
+
+		ERROR("Dataset number is out of range\n");
+		return 0;
+	}
+
+	bUSAGE = 0;
+
+	for (N = 0; N < PLOT_CHUNK_MAX; ++N) {
+
+		if (		pl->data[dN].raw[N] != NULL
+				|| pl->data[dN].compress[N].raw != NULL) {
+
+			bUSAGE += pl->data[dN].chunk_bSIZE;
+		}
+	}
+
+	return bUSAGE;
+}
+
+static int
+plotDataCacheGetNode(plot_t *pl, int dN, int kN)
+{
+	int		N, kNOT, xN = -1;
+
+	for (N = 0; N < PLOT_CHUNK_CACHE; ++N) {
+
+		if (pl->data[dN].cache[N].raw == NULL) {
+
+			xN = N;
+			break;
+		}
+	}
+
+	if (xN < 0) {
+
+		kNOT = pl->data[dN].tail_N >> pl->data[dN].chunk_SHIFT;
+
+		N = (pl->data[dN].cache_ID < PLOT_CHUNK_CACHE - 1)
+			? pl->data[dN].cache_ID + 1 : 0;
+
+		if (pl->data[dN].cache[N].chunk_N == kNOT) {
+
+			N = (N < PLOT_CHUNK_CACHE - 1) ? N + 1 : 0;
+		}
+
+		xN = N;
+
+		pl->data[dN].cache_ID = N;
+	}
+
+	return xN;
+}
+
+static void
+plotDataCacheFetch(plot_t *pl, int dN, int kN)
+{
+	int		xN, kNZ, lzLEN;
+
+	xN = plotDataCacheGetNode(pl, dN, kN);
+
+	if (pl->data[dN].cache[xN].raw != NULL) {
+
+		kNZ = pl->data[dN].cache[xN].chunk_N;
+
+		if (pl->data[dN].cache[xN].dirty != 0) {
+
+			lzLEN = LZ4_compressBound(pl->data[dN].chunk_bSIZE);
+
+			if (pl->data[dN].compress[kNZ].raw != NULL) {
+
+				free(pl->data[dN].compress[kNZ].raw);
+			}
+
+			pl->data[dN].compress[kNZ].raw = (void *) malloc(lzLEN);
+
+			if (pl->data[dN].compress[kNZ].raw == NULL) {
+
+				ERROR("Unable to allocate LZ4 memory of %i dataset\n", dN);
+			}
+
+			lzLEN = LZ4_compress_default(
+					(const char *) pl->data[dN].cache[xN].raw,
+					(char *) pl->data[dN].compress[kNZ].raw,
+					pl->data[dN].chunk_bSIZE, lzLEN);
+
+			if (lzLEN > 0) {
+
+				pl->data[dN].compress[kNZ].raw =
+					realloc(pl->data[dN].compress[kNZ].raw, lzLEN);
+				pl->data[dN].compress[kNZ].length = lzLEN;
+			}
+			else {
+				ERROR("Unable to compress the chunk of %i dataset\n", dN);
+
+				free(pl->data[dN].compress[kNZ].raw);
+
+				pl->data[dN].compress[kNZ].raw = NULL;
+				pl->data[dN].compress[kNZ].length = 0;
+			}
+		}
+
+		pl->data[dN].raw[kNZ] = NULL;
+	}
+	else {
+		pl->data[dN].cache[xN].raw = (fval_t *) malloc(pl->data[dN].chunk_bSIZE);
+
+		if (pl->data[dN].cache[xN].raw == NULL) {
+
+			ERROR("Unable to allocate cache of %i dataset\n", dN);
+		}
+	}
+
+	pl->data[dN].cache[xN].chunk_N = kN;
+	pl->data[dN].cache[xN].dirty = 0;
+
+	pl->data[dN].raw[kN] = pl->data[dN].cache[xN].raw;
+
+	if (pl->data[dN].compress[kN].raw != NULL) {
+
+		lzLEN = LZ4_decompress_safe(
+				(const char *) pl->data[dN].compress[kN].raw,
+				(char *) pl->data[dN].raw[kN],
+				pl->data[dN].compress[kN].length,
+				pl->data[dN].chunk_bSIZE);
+
+		if (lzLEN != pl->data[dN].chunk_bSIZE) {
+
+			ERROR("Unable to decompress the chunk of %i dataset\n", dN);
+		}
+	}
+}
+
+static void
+plotDataChunkFetch(plot_t *pl, int dN, int kN)
+{
+	if (		   pl->data[dN].raw[kN] == NULL
+			&& pl->data[dN].length_N != 0) {
+
+		plotDataCacheFetch(pl, dN, kN);
+	}
+}
+
+static void
+plotDataChunkWrite(plot_t *pl, int dN, int kN)
+{
+	int		N;
+
+	if (		   pl->data[dN].raw[kN] == NULL
+			&& pl->data[dN].length_N != 0) {
+
+		plotDataCacheFetch(pl, dN, kN);
+	}
+
+	if (pl->data[dN].raw[kN] != NULL) {
+
+		for (N = 0; N < PLOT_CHUNK_CACHE; ++N) {
+
+			if (pl->data[dN].cache[N].chunk_N == kN) {
+
+				pl->data[dN].cache[N].dirty = 1;
+				break;
+			}
+		}
+	}
+}
+
 void plotDataAlloc(plot_t *pl, int dN, int cN, int lN)
 {
-	void		*pm;
+	int		*map;
 	int		N, bSIZE;
 
 	if (dN < 0 || dN >= PLOT_DATASET_MAX) {
@@ -312,11 +510,14 @@ void plotDataAlloc(plot_t *pl, int dN, int cN, int lN)
 
 				pl->data[dN].chunk_SHIFT = N;
 				pl->data[dN].chunk_MASK = (1UL << N) - 1UL;
+				pl->data[dN].chunk_bSIZE = bSIZE;
 				break;
 			}
 		}
 
 		plotDataChunkAlloc(pl, dN, lN);
+
+		pl->data[dN].cache_ID = 0;
 
 		pl->data[dN].head_N = 0;
 		pl->data[dN].tail_N = 0;
@@ -328,15 +529,15 @@ void plotDataAlloc(plot_t *pl, int dN, int cN, int lN)
 			pl->data[dN].sub[N].busy = SUBTRACT_FREE;
 		}
 
-		pm = malloc(sizeof(int) * (cN + PLOT_SUBTRACT + 1));
+		map = (int *) malloc(sizeof(int) * (cN + PLOT_SUBTRACT + 1));
 
-		if (pm == NULL) {
+		if (map == NULL) {
 
 			ERROR("No memory allocated for %i map\n", dN);
 			return ;
 		}
 
-		pl->data[dN].map = (int *) pm + 1;
+		pl->data[dN].map = (int *) map + 1;
 
 		for (N = -1; N < (cN + PLOT_SUBTRACT); ++N) {
 
@@ -410,17 +611,82 @@ plotDataGet(plot_t *pl, int dN, int *rN)
 		kN = *rN >> pl->data[dN].chunk_SHIFT;
 		jN = *rN & pl->data[dN].chunk_MASK;
 
-		row = pl->data[dN].raw[kN] + (pl->data[dN].column_N + PLOT_SUBTRACT) * jN;
+		if (pl->lz4_compress != 0) {
 
-		lN = pl->data[dN].length_N;
-		*rN = (*rN < lN - 1) ? *rN + 1 : 0;
+			plotDataChunkFetch(pl, dN, kN);
+		}
+
+		row = pl->data[dN].raw[kN];
+
+		if (row != NULL) {
+
+			row += (pl->data[dN].column_N + PLOT_SUBTRACT) * jN;
+
+			lN = pl->data[dN].length_N;
+			*rN = (*rN < lN - 1) ? *rN + 1 : 0;
+		}
 	}
 
 	return row;
 }
 
 static void
-plotDataSkip(plot_t *pl, int dN, int *rN, int *id_N, int skip)
+plotDataRangeCacheWipe(plot_t *pl, int dN, int kN)
+{
+	int		N;
+
+	for (N = 0; N < PLOT_RCACHE_SIZE; ++N) {
+
+		if (		pl->rcache[N].busy != 0
+				&& pl->rcache[N].data_N == dN) {
+
+			pl->rcache[N].chunk[kN].computed = 0;
+			pl->rcache[N].cached = 0;
+		}
+	}
+}
+
+static fval_t *
+plotDataWrite(plot_t *pl, int dN, int *rN)
+{
+	fval_t		*row = NULL;
+	int		lN, kN, jN;
+
+	if (*rN != pl->data[dN].tail_N) {
+
+		kN = *rN >> pl->data[dN].chunk_SHIFT;
+		jN = *rN & pl->data[dN].chunk_MASK;
+
+		if (pl->lz4_compress != 0) {
+
+			plotDataChunkWrite(pl, dN, kN);
+		}
+
+		if (		   pl->rcache_wipe_data_N != dN
+				|| pl->rcache_wipe_chunk_N != kN) {
+
+			plotDataRangeCacheWipe(pl, dN, kN);
+
+			pl->rcache_wipe_data_N = dN;
+			pl->rcache_wipe_chunk_N = kN;
+		}
+
+		row = pl->data[dN].raw[kN];
+
+		if (row != NULL) {
+
+			row += (pl->data[dN].column_N + PLOT_SUBTRACT) * jN;
+
+			lN = pl->data[dN].length_N;
+			*rN = (*rN < lN - 1) ? *rN + 1 : 0;
+		}
+	}
+
+	return row;
+}
+
+static void
+plotDataSkip(plot_t *pl, int dN, int *rN, int *id_N, int sk_N)
 {
 	int		lN, N, tN;
 
@@ -432,10 +698,10 @@ plotDataSkip(plot_t *pl, int dN, int *rN, int *id_N, int skip)
 	tN = pl->data[dN].tail_N - pl->data[dN].head_N;
 	tN = (tN < 0) ? tN + lN : tN;
 
-	skip = (N + skip < 0) ? - N : skip;
-	skip = (N + skip > tN) ? tN - N : skip;
+	sk_N = (N + sk_N < 0) ? - N : sk_N;
+	sk_N = (N + sk_N > tN) ? tN - N : sk_N;
 
-	N += skip;
+	N += sk_N;
 
 	N = pl->data[dN].head_N + N;
 	N = (N > lN - 1) ? N - lN : N;
@@ -447,153 +713,39 @@ plotDataSkip(plot_t *pl, int dN, int *rN, int *id_N, int skip)
 
 	if (id_N != NULL) {
 
-		*id_N += skip;
+		*id_N += sk_N;
 	}
 }
 
 static int
-plotDataSliceCacheFetch(plot_t *pl, int dN, int cN)
+plotDataChunkN(plot_t *pl, int dN, int rN)
 {
-	int		N, xN = -1;
+	int		kN;
 
-	for (N = 0; N < PLOT_SCACHE_SIZE; ++N) {
+	kN = rN >> pl->data[dN].chunk_SHIFT;
 
-		if (		pl->scache[N].data_N == dN
-				&& pl->scache[N].column_N == cN
-				&& pl->scache[N].busy != 0) {
-
-			if (pl->scache[N].column_N >= pl->data[dN].column_N + PLOT_SUBTRACT)
-				break;
-
-			if (pl->scache[N].min_N >= pl->data[dN].length_N)
-				break;
-
-			xN = N;
-			break;
-		}
-	}
-
-	return xN;
+	return kN;
 }
 
 static void
-plotDataSliceCacheClean(plot_t *pl)
+plotDataChunkSkip(plot_t *pl, int dN, int *rN, int *id_N)
 {
-	int		N;
+	int		skip_N, wrap_N;
 
-	for (N = 0; N < PLOT_SCACHE_SIZE; ++N)
-		pl->scache[N].busy = 0;
-}
+	skip_N = (1UL << pl->data[dN].chunk_SHIFT)
+		- (*rN & pl->data[dN].chunk_MASK);
 
-static const fval_t *
-plotDataGetSlice(plot_t *pl, int dN, int cN, double fsamp, int *m_id_N)
-{
-	const fval_t	*row, *min = NULL;
-	fval_t		fval, fmin;
-	int		xN, lN, rN, tN, id_N, min_N, start;
+	wrap_N = pl->data[dN].length_N - *rN;
+	skip_N = (wrap_N < skip_N) ? wrap_N : skip_N;
 
-	xN = plotDataSliceCacheFetch(pl, dN, cN);
-
-	if (xN < 0) {
-
-		xN = pl->scache_ID;
-		rN = pl->data[dN].head_N;
-		tN = pl->data[dN].tail_N;
-		id_N = pl->data[dN].id_N;
-
-		start = 0;
-
-		pl->scache_ID = (pl->scache_ID < PLOT_SCACHE_SIZE - 1) ? pl->scache_ID + 1 : 0;
-	}
-	else {
-		lN = pl->data[dN].length_N;
-
-		rN = pl->data[dN].head_N + (pl->scache[xN].min_N - pl->data[dN].id_N);
-		rN = (rN < 0) ? rN + lN : rN;
-		tN = rN;
-		id_N = pl->scache[xN].min_N;
-
-		plotDataSkip(pl, dN, &rN, &id_N, - PLOT_DATASLICE_SPAN);
-		plotDataSkip(pl, dN, &tN, NULL,  + PLOT_DATASLICE_SPAN);
-
-		start = 0;
-	}
-
-	do {
-		row = plotDataGet(pl, dN, &rN);
-
-		if (row == NULL)
-			break;
-
-		fval = (cN < 0) ? id_N : row[cN];
-
-		if (fp_isfinite(fval)) {
-
-			if (start != 0) {
-
-				fval = fabs(fsamp - fval);
-
-				if (fval < fmin) {
-
-					min = row;
-					fmin = fval;
-					min_N = id_N;
-				}
-			}
-			else {
-				start = 1;
-
-				min = row;
-				fmin = fabs(fsamp - fval);
-				min_N = id_N;
-			}
-		}
-
-		if (rN == tN)
-			break;
-
-		id_N++;
-	}
-	while (1);
-
-	if (start != 0) {
-
-		pl->scache[xN].data_N = dN;
-		pl->scache[xN].column_N = cN;
-		pl->scache[xN].busy = 1;
-		pl->scache[xN].min_N = min_N;
-
-		*m_id_N = min_N;
-	}
-
-	return min;
-}
-
-static const fval_t *
-plotDataGetSliceFinal(plot_t *pl, int dN, int cN, double fsamp, int *m_id_N)
-{
-	const fval_t	*row;
-	int		N, id_N, last_id_N = -1;
-
-	for (N = 0; N < 1000; ++N) {
-
-		row = plotDataGetSlice(pl, dN, cN, fsamp, &id_N);
-
-		if (id_N == last_id_N)
-			break;
-
-		last_id_N = id_N;
-	}
-
-	*m_id_N = id_N;
-
-	return row;
+	plotDataSkip(pl, dN, rN, id_N, skip_N);
 }
 
 static void
 plotDataResample(plot_t *pl, int dN, int cN_X, int cN_Y, int r_dN, int r_cN_X, int r_cN_Y)
 {
-	fval_t		*row, *r_row, X, Y, r_X, r_Y, r_X_prev, r_Y_prev, Q;
+	fval_t		*row, X, Y, r_X, r_Y, r_X_prev, r_Y_prev, Q;
+	const fval_t	*r_row;
 	int		rN, id_N, r_rN, r_id_N;
 
 	rN = pl->data[dN].head_N;
@@ -603,7 +755,7 @@ plotDataResample(plot_t *pl, int dN, int cN_X, int cN_Y, int r_dN, int r_cN_X, i
 	r_id_N = pl->data[r_dN].id_N;
 
 	do {
-		r_row = (fval_t *) plotDataGet(pl, r_dN, &r_rN);
+		r_row = plotDataGet(pl, r_dN, &r_rN);
 
 		if (r_row == NULL)
 			break;
@@ -629,7 +781,7 @@ plotDataResample(plot_t *pl, int dN, int cN_X, int cN_Y, int r_dN, int r_cN_X, i
 	}
 
 	do {
-		row = (fval_t *) plotDataGet(pl, dN, &rN);
+		row = plotDataWrite(pl, dN, &rN);
 
 		if (row == NULL)
 			break;
@@ -642,7 +794,7 @@ plotDataResample(plot_t *pl, int dN, int cN_X, int cN_Y, int r_dN, int r_cN_X, i
 				if (r_X >= X)
 					break;
 
-				r_row = (fval_t *) plotDataGet(pl, r_dN, &r_rN);
+				r_row = plotDataGet(pl, r_dN, &r_rN);
 
 				if (r_row == NULL)
 					break;
@@ -686,14 +838,116 @@ plotDataResample(plot_t *pl, int dN, int cN_X, int cN_Y, int r_dN, int r_cN_X, i
 	while (1);
 }
 
+static void
+plotDataPolyfit(plot_t *pl, int dN, int cN_X, int cN_Y,
+		double scale_X, double offset_X,
+		double scale_Y, double offset_Y, int poly_N)
+{
+	const fval_t	*row;
+	double		fval_X, fval_Y, fvec[LSE_FULL_MAX];
+	int		N, xN, yN, kN, rN, id_N, job;
+
+	lse_initiate(&pl->lsq, LSE_CASCADE_MAX, poly_N + 1, 1);
+
+	xN = plotDataRangeCacheFetch(pl, dN, cN_X);
+	yN = plotDataRangeCacheFetch(pl, dN, cN_Y);
+
+	rN = pl->data[dN].head_N;
+	id_N = pl->data[dN].id_N;
+
+	do {
+		kN = plotDataChunkN(pl, dN, rN);
+		job = 1;
+
+		if (xN >= 0 && pl->rcache[xN].chunk[kN].computed != 0) {
+
+			if (pl->rcache[xN].chunk[kN].finite != 0) {
+
+				fvec[0] = pl->rcache[xN].chunk[kN].fmin * scale_X + offset_X;
+				fvec[1] = pl->rcache[xN].chunk[kN].fmax * scale_X + offset_X;
+
+				if (fvec[0] > 1. || fvec[1] < 0.) {
+
+					job = 0;
+				}
+			}
+			else {
+				job = 0;
+			}
+		}
+
+		if (yN >= 0 && pl->rcache[yN].chunk[kN].computed != 0) {
+
+			if (pl->rcache[yN].chunk[kN].finite != 0) {
+
+				fvec[0] = pl->rcache[yN].chunk[kN].fmin * scale_Y + offset_Y;
+				fvec[1] = pl->rcache[yN].chunk[kN].fmax * scale_Y + offset_Y;
+
+				if (fvec[0] > 1. || fvec[1] < 0.) {
+
+					job = 0;
+				}
+			}
+			else {
+				job = 0;
+			}
+		}
+
+		if (job != 0) {
+
+			do {
+				if (kN != plotDataChunkN(pl, dN, rN))
+					break;
+
+				row = plotDataGet(pl, dN, &rN);
+
+				if (row == NULL)
+					break;
+
+				fval_X = (cN_X < 0) ? id_N : row[cN_X];
+				fval_Y = (cN_Y < 0) ? id_N : row[cN_Y];
+
+				if (fp_isfinite(fval_X) && fp_isfinite(fval_Y)) {
+
+					fvec[0] = fval_X * scale_X + offset_X;
+					fvec[1] = fval_Y * scale_Y + offset_Y;
+
+					if (		   fvec[0] >= 0. && fvec[0] <= 1.
+							&& fvec[1] >= 0. && fvec[1] <= 1.) {
+
+						fvec[0] = 1.;
+
+						for (N = 0; N < poly_N; ++N)
+							fvec[N + 1] = fvec[N] * fval_X;
+
+						fvec[poly_N + 1] = fval_Y;
+
+						lse_insert(&pl->lsq, fvec);
+					}
+				}
+
+				id_N++;
+			}
+			while (1);
+		}
+		else {
+			plotDataChunkSkip(pl, dN, &rN, &id_N);
+		}
+
+		if (rN == pl->data[dN].tail_N)
+			break;
+	}
+	while (1);
+
+	lse_finalise(&pl->lsq);
+}
+
 void plotDataSubtract(plot_t *pl, int dN, int sN)
 {
 	fval_t		*row, X_1, X_2, X_3;
 	double		scale, offset, gain;
 	int		cN, cN_1, cN_2, cN_3, dN_1;
 	int		rN, rS, sE, id_N, id_S, mode;
-	int		shift_1, temp_1;
-	unsigned long	mask_1;
 
 	if (dN < 0 || dN >= PLOT_DATASET_MAX) {
 
@@ -736,7 +990,7 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 
 			if (rS == pl->data[dN].head_N) {
 
-				pl->data[dN].sub[sN].op.time.unwrap = (fval_t) 0.;
+				pl->data[dN].sub[sN].op.time.unwrap = (double) 0.;
 				pl->data[dN].sub[sN].op.time.prev = FP_NAN;
 				pl->data[dN].sub[sN].op.time.prev2 = FP_NAN;
 			}
@@ -747,7 +1001,7 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 			X_3 = (fval_t) pl->data[dN].sub[sN].op.time.prev2;
 
 			do {
-				row = (fval_t *) plotDataGet(pl, dN, &rN);
+				row = plotDataWrite(pl, dN, &rN);
 
 				if (row == NULL)
 					break;
@@ -787,7 +1041,7 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 			offset = pl->data[dN].sub[sN].op.scale.offset;
 
 			do {
-				row = (fval_t *) plotDataGet(pl, dN, &rN);
+				row = plotDataWrite(pl, dN, &rN);
 
 				if (row == NULL)
 					break;
@@ -807,7 +1061,7 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 			cN_2 = pl->data[dN].sub[sN].op.binary.column_2;
 
 			do {
-				row = (fval_t *) plotDataGet(pl, dN, &rN);
+				row = plotDataWrite(pl, dN, &rN);
 
 				if (row == NULL)
 					break;
@@ -827,7 +1081,7 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 			cN_2 = pl->data[dN].sub[sN].op.binary.column_2;
 
 			do {
-				row = (fval_t *) plotDataGet(pl, dN, &rN);
+				row = plotDataWrite(pl, dN, &rN);
 
 				if (row == NULL)
 					break;
@@ -847,7 +1101,7 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 			cN_2 = pl->data[dN].sub[sN].op.binary.column_2;
 
 			do {
-				row = (fval_t *) plotDataGet(pl, dN, &rN);
+				row = plotDataWrite(pl, dN, &rN);
 
 				if (row == NULL)
 					break;
@@ -867,7 +1121,7 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 			cN_2 = pl->data[dN].sub[sN].op.binary.column_2;
 
 			do {
-				row = (fval_t *) plotDataGet(pl, dN, &rN);
+				row = plotDataWrite(pl, dN, &rN);
 
 				if (row == NULL)
 					break;
@@ -892,7 +1146,7 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 			X_2 = (fval_t) pl->data[dN].sub[sN].op.filter.state;
 
 			do {
-				row = (fval_t *) plotDataGet(pl, dN, &rN);
+				row = plotDataWrite(pl, dN, &rN);
 
 				if (row == NULL)
 					break;
@@ -920,7 +1174,7 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 			X_2 = (fval_t) pl->data[dN].sub[sN].op.filter.state;
 
 			do {
-				row = (fval_t *) plotDataGet(pl, dN, &rN);
+				row = plotDataWrite(pl, dN, &rN);
 
 				if (row == NULL)
 					break;
@@ -942,6 +1196,9 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 		}
 		else if (mode == SUBTRACT_FILTER_BITMASK) {
 
+			int		shift_1, temp_1;
+			unsigned long	mask_1;
+
 			cN_1 = pl->data[dN].sub[sN].op.filter.column_1;
 			shift_1 = (int) pl->data[dN].sub[sN].op.filter.arg_1;
 			temp_1 = (int) pl->data[dN].sub[sN].op.filter.arg_2;
@@ -950,7 +1207,7 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 				mask_1 |= (1UL << temp_1);
 
 			do {
-				row = (fval_t *) plotDataGet(pl, dN, &rN);
+				row = plotDataWrite(pl, dN, &rN);
 
 				if (row == NULL)
 					break;
@@ -976,7 +1233,7 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 			X_2 = (fval_t) pl->data[dN].sub[sN].op.filter.state;
 
 			do {
-				row = (fval_t *) plotDataGet(pl, dN, &rN);
+				row = plotDataWrite(pl, dN, &rN);
 
 				if (row == NULL)
 					break;
@@ -1012,10 +1269,37 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 				cN_1 = pl->data[dN].sub[sN].op.resample.column_X;
 				cN_2 = pl->data[dN].sub[sN].op.resample.column_in_X;
 				cN_3 = pl->data[dN].sub[sN].op.resample.column_in_Y;
-				dN_1 = pl->data[dN].sub[sN].op.resample.in_dN;
+				dN_1 = pl->data[dN].sub[sN].op.resample.in_data_N;
 
 				plotDataResample(pl, dN, cN_1, cN, dN_1, cN_2, cN_3);
 			}
+		}
+		else if (mode == SUBTRACT_POLYFIT) {
+
+			const double	*coefs;
+			int		N, poly_N;
+
+			cN_1 = pl->data[dN].sub[sN].op.polyfit.column_X;
+			poly_N = pl->data[dN].sub[sN].op.polyfit.poly_N;
+			coefs = pl->data[dN].sub[sN].op.polyfit.coefs;
+
+			do {
+				row = plotDataWrite(pl, dN, &rN);
+
+				if (row == NULL)
+					break;
+
+				X_1 = (cN_1 < 0) ? id_N : row[cN_1];
+				X_2 = coefs[poly_N];
+
+				for (N = poly_N - 1; N >= 0; --N)
+					X_2 = X_2 * X_1 + coefs[N];
+
+				row[cN] = X_2;
+
+				id_N++;
+			}
+			while (1);
 		}
 
 		sN++;
@@ -1052,37 +1336,79 @@ void plotDataInsert(plot_t *pl, int dN, const fval_t *row)
 	kN = tN >> pl->data[dN].chunk_SHIFT;
 	jN = tN & pl->data[dN].chunk_MASK;
 
-	place = pl->data[dN].raw[kN] + (cN + PLOT_SUBTRACT) * jN;
+	if (pl->lz4_compress != 0) {
 
-	memcpy(place, row, cN * sizeof(fval_t));
-
-	tN = (tN < lN - 1) ? tN + 1 : 0;
-
-	if (hN == tN) {
-
-		pl->data[dN].id_N++;
-
-		hN = (hN < lN - 1) ? hN + 1 : 0;
-		pl->data[dN].head_N = hN;
-
-		sN = pl->data[dN].sub_N;
-		pl->data[dN].sub_N = (sN == tN) ? hN : sN;
+		plotDataChunkWrite(pl, dN, kN);
 	}
 
-	pl->data[dN].tail_N = tN;
+	if (		   pl->rcache_wipe_data_N != dN
+			|| pl->rcache_wipe_chunk_N != kN) {
+
+		plotDataRangeCacheWipe(pl, dN, kN);
+
+		pl->rcache_wipe_data_N = dN;
+		pl->rcache_wipe_chunk_N = kN;
+	}
+
+	place = pl->data[dN].raw[kN];
+
+	if (place != NULL) {
+
+		place += (cN + PLOT_SUBTRACT) * jN;
+
+		memcpy(place, row, cN * sizeof(fval_t));
+
+		tN = (tN < lN - 1) ? tN + 1 : 0;
+
+		if (hN == tN) {
+
+			pl->data[dN].id_N++;
+
+			hN = (hN < lN - 1) ? hN + 1 : 0;
+			pl->data[dN].head_N = hN;
+
+			sN = pl->data[dN].sub_N;
+			pl->data[dN].sub_N = (sN == tN) ? hN : sN;
+		}
+
+		pl->data[dN].tail_N = tN;
+	}
 }
 
-void plotDataClean(plot_t *pl)
+void plotDataClean(plot_t *pl, int dN)
 {
-	int		dN, N;
+	int		N;
 
-	for (dN = 0; dN < PLOT_DATASET_MAX; ++dN) {
+	if (pl->data[dN].column_N != 0) {
 
-		if (pl->data[dN].column_N != 0) {
+		pl->data[dN].column_N = 0;
+		pl->data[dN].length_N = 0;
 
-			pl->data[dN].column_N = 0;
-			pl->data[dN].length_N = 0;
+		if (pl->lz4_compress != 0) {
 
+			for (N = 0; N < PLOT_CHUNK_CACHE; ++N) {
+
+				if (pl->data[dN].cache[N].raw) {
+
+					free(pl->data[dN].cache[N].raw);
+
+					pl->data[dN].cache[N].raw = NULL;
+				}
+			}
+
+			for (N = 0; N < PLOT_CHUNK_MAX; ++N) {
+
+				pl->data[dN].raw[N] = NULL;
+
+				if (pl->data[dN].compress[N].raw != NULL) {
+
+					free(pl->data[dN].compress[N].raw);
+
+					pl->data[dN].compress[N].raw = NULL;
+				}
+			}
+		}
+		else {
 			for (N = 0; N < PLOT_CHUNK_MAX; ++N) {
 
 				if (pl->data[dN].raw[N] != NULL) {
@@ -1092,36 +1418,27 @@ void plotDataClean(plot_t *pl)
 					pl->data[dN].raw[N] = NULL;
 				}
 			}
-
-			free(pl->data[dN].map - 1);
-
-			pl->data[dN].map = NULL;
 		}
+
+		free(pl->data[dN].map - 1);
+
+		pl->data[dN].map = NULL;
 	}
 }
 
 static int
-plotDataRangeCacheFetch(plot_t *pl, int dN, int cN)
+plotDataRangeCacheGetNode(plot_t *pl, int dN, int cN)
 {
 	int		N, xN = -1;
 
-	if (pl->data[dN].id_N == 0) {
+	for (N = 0; N < PLOT_RCACHE_SIZE; ++N) {
 
-		for (N = 0; N < PLOT_RCACHE_SIZE; ++N) {
+		if (		pl->rcache[N].busy != 0
+				&& pl->rcache[N].data_N == dN
+				&& pl->rcache[N].column_N == cN) {
 
-			if (		pl->rcache[N].data_N == dN
-					&& pl->rcache[N].column_N == cN
-					&& pl->rcache[N].final_N != 0) {
-
-				if (pl->rcache[N].column_N >= pl->data[dN].column_N + PLOT_SUBTRACT)
-					break;
-
-				if (pl->rcache[N].final_N >= pl->data[dN].length_N)
-					break;
-
-				xN = N;
-				break;
-			}
+			xN = N;
+			break;
 		}
 	}
 
@@ -1135,7 +1452,7 @@ void plotDataRangeCacheClean(plot_t *pl, int dN)
 	for (N = 0; N < PLOT_RCACHE_SIZE; ++N) {
 
 		if (pl->rcache[N].data_N == dN)
-			pl->rcache[N].final_N = 0;
+			pl->rcache[N].busy = 0;
 	}
 }
 
@@ -1145,7 +1462,7 @@ void plotDataRangeCacheSubtractClean(plot_t *pl)
 
 	for (N = 0; N < PLOT_RCACHE_SIZE; ++N) {
 
-		if (pl->rcache[N].final_N != 0) {
+		if (pl->rcache[N].busy != 0) {
 
 			dN = pl->rcache[N].data_N;
 
@@ -1153,119 +1470,285 @@ void plotDataRangeCacheSubtractClean(plot_t *pl)
 					&& pl->data[dN].column_N != 0) {
 
 				if (pl->rcache[N].column_N >= pl->data[dN].column_N)
-					pl->rcache[N].final_N = 0;
+					pl->rcache[N].busy = 0;
 			}
 		}
 	}
+}
+
+int plotDataRangeCacheFetch(plot_t *pl, int dN, int cN)
+{
+	const fval_t	*row;
+	fval_t		fval, fmin, fmax, ymin, ymax;
+	int		N, xN, rN, id_N, kN;
+	int		job, finite, started;
+
+	xN = plotDataRangeCacheGetNode(pl, dN, cN);
+
+	if (xN >= 0) {
+
+		if (pl->rcache[xN].cached != 0)
+			return xN;
+	}
+	else {
+		xN = pl->rcache_ID;
+
+		pl->rcache_ID = (pl->rcache_ID < PLOT_RCACHE_SIZE - 1)
+			? pl->rcache_ID + 1 : 0;
+
+		for (N = 0; N < PLOT_CHUNK_MAX; ++N) {
+
+			pl->rcache[xN].chunk[N].computed = 0;
+		}
+	}
+
+	rN = pl->data[dN].head_N;
+	id_N = pl->data[dN].id_N;
+
+	fmin = (fval_t) 0.;
+	fmax = (fval_t) 0.;
+
+	started = 0;
+
+	do {
+		kN = plotDataChunkN(pl, dN, rN);
+
+		if (pl->rcache[xN].chunk[kN].computed != 0) {
+
+			if (kN == plotDataChunkN(pl, dN, pl->data[dN].tail_N)) {
+
+				job = 1;
+
+				finite = pl->rcache[xN].chunk[kN].finite;
+				ymin = pl->rcache[xN].chunk[kN].fmin;
+				ymax = pl->rcache[xN].chunk[kN].fmax;
+			}
+			else {
+				job = 0;
+			}
+		}
+		else {
+			finite = 0;
+			job = 1;
+		}
+
+		if (job != 0) {
+
+			do {
+				if (kN != plotDataChunkN(pl, dN, rN))
+					break;
+
+				row = plotDataGet(pl, dN, &rN);
+
+				if (row == NULL)
+					break;
+
+				fval = (cN < 0) ? id_N : row[cN];
+
+				if (fp_isfinite(fval)) {
+
+					if (finite != 0) {
+
+						ymin = (fval < ymin) ? fval : ymin;
+						ymax = (fval > ymax) ? fval : ymax;
+					}
+					else {
+						finite = 1;
+
+						ymin = fval;
+						ymax = fval;
+					}
+				}
+
+				id_N++;
+			}
+			while (1);
+
+			pl->rcache[xN].chunk[kN].computed = 1;
+			pl->rcache[xN].chunk[kN].finite = finite;
+
+			if (finite != 0) {
+
+				pl->rcache[xN].chunk[kN].fmin = ymin;
+				pl->rcache[xN].chunk[kN].fmax = ymax;
+			}
+		}
+		else {
+			plotDataChunkSkip(pl, dN, &rN, &id_N);
+		}
+
+		if (pl->rcache[xN].chunk[kN].finite != 0) {
+
+			if (started != 0) {
+
+				fmin = (pl->rcache[xN].chunk[kN].fmin < fmin)
+					? pl->rcache[xN].chunk[kN].fmin : fmin;
+
+				fmax = (pl->rcache[xN].chunk[kN].fmax > fmax)
+					? pl->rcache[xN].chunk[kN].fmax : fmax;
+			}
+			else {
+				started = 1;
+
+				fmin = pl->rcache[xN].chunk[kN].fmin;
+				fmax = pl->rcache[xN].chunk[kN].fmax;
+			}
+		}
+
+		if (rN == pl->data[dN].tail_N)
+			break;
+	}
+	while (1);
+
+	pl->rcache[xN].busy = 1;
+	pl->rcache[xN].data_N = dN;
+	pl->rcache[xN].column_N = cN;
+	pl->rcache[xN].cached = 1;
+	pl->rcache[xN].fmin = fmin;
+	pl->rcache[xN].fmax = fmax;
+
+	pl->rcache_wipe_data_N = -1;
+	pl->rcache_wipe_chunk_N = -1;
+
+	return xN;
 }
 
 static void
 plotDataRangeGet(plot_t *pl, int dN, int cN, double *pmin, double *pmax)
 {
-	const fval_t	*row;
-	double		fval, fmin, fmax;
-	int		xN, rN, id_N, start;
-
-	if (dN < 0 || dN >= PLOT_DATASET_MAX) {
-
-		ERROR("Dataset number is out of range\n");
-		return ;
-	}
-
-	if (cN >= pl->data[dN].column_N + PLOT_SUBTRACT) {
-
-		ERROR("Column number %i is out of range\n", cN);
-		return ;
-	}
+	int		xN;
 
 	xN = plotDataRangeCacheFetch(pl, dN, cN);
 
-	if (xN < 0) {
+	*pmin = (double) pl->rcache[xN].fmin;
+	*pmax = (double) pl->rcache[xN].fmax;
+}
 
-		xN = pl->rcache_ID;
-		rN = pl->data[dN].head_N;
-		id_N = pl->data[dN].id_N;
+static void
+plotDataRangeCond(plot_t *pl, int dN, int cN, int cN_cond, int *pflag,
+		double scale, double offset, double *pmin, double *pmax)
+{
+	const fval_t	*row;
+	double		fval, fmin, fmax, fcond, vmin, vmax;
+	int		xN, yN, kN, rN, id_N, job, started;
 
-		fmin = (fval_t) 0.;
-		fmax = (fval_t) 0.;
+	xN = plotDataRangeCacheFetch(pl, dN, cN_cond);
+	yN = plotDataRangeCacheFetch(pl, dN, cN);
 
-		start = 0;
+	rN = pl->data[dN].head_N;
+	id_N = pl->data[dN].id_N;
 
-		pl->rcache_ID = (pl->rcache_ID < PLOT_RCACHE_SIZE - 1) ? pl->rcache_ID + 1 : 0;
-	}
-	else {
-		rN = pl->rcache[xN].final_N;
-		start = pl->rcache[xN].start;
-
-		fmin = pl->rcache[xN].fmin;
-		fmax = pl->rcache[xN].fmax;
-
-		id_N = rN;
-	}
+	started = *pflag;
+	fmin = *pmin;
+	fmax = *pmax;
 
 	do {
-		row = plotDataGet(pl, dN, &rN);
+		kN = plotDataChunkN(pl, dN, rN);
+		job = 1;
 
-		if (row == NULL)
-			break;
+		if (xN >= 0 && pl->rcache[xN].chunk[kN].computed != 0) {
 
-		fval = (cN < 0) ? id_N : row[cN];
+			if (pl->rcache[xN].chunk[kN].finite != 0) {
 
-		if (fp_isfinite(fval)) {
+				vmin = pl->rcache[xN].chunk[kN].fmin * scale + offset;
+				vmax = pl->rcache[xN].chunk[kN].fmax * scale + offset;
 
-			if (start != 0) {
+				if (yN >= 0	&& pl->rcache[yN].chunk[kN].computed != 0
+						&& vmin >= 0. && vmin <= 1.
+						&& vmax >= 0. && vmax <= 1.) {
 
-				fmin = (fval < fmin) ? fval : fmin;
-				fmax = (fval > fmax) ? fval : fmax;
+					job = 0;
+
+					if (pl->rcache[yN].chunk[kN].finite != 0) {
+
+						if (started != 0) {
+
+							fmin = (pl->rcache[yN].chunk[kN].fmin < fmin)
+								? pl->rcache[yN].chunk[kN].fmin : fmin;
+
+							fmax = (pl->rcache[yN].chunk[kN].fmax > fmax)
+								? pl->rcache[yN].chunk[kN].fmax : fmax;
+						}
+						else {
+							started = 1;
+
+							fmin = pl->rcache[yN].chunk[kN].fmin;
+							fmax = pl->rcache[yN].chunk[kN].fmax;
+						}
+					}
+				}
+				else if (vmin > 1. || vmax < 0.) {
+
+					job = 0;
+				}
 			}
 			else {
-				start = 1;
-
-				fmin = fval;
-				fmax = fval;
+				job = 0;
 			}
 		}
 
-		id_N++;
+		if (job != 0) {
+
+			do {
+				if (kN != plotDataChunkN(pl, dN, rN))
+					break;
+
+				row = plotDataGet(pl, dN, &rN);
+
+				if (row == NULL)
+					break;
+
+				fval = (cN < 0) ? id_N : row[cN];
+				fcond = (cN_cond < 0) ? id_N : row[cN_cond];
+
+				fcond = fcond * scale + offset;
+
+				if (fcond >= 0. && fcond <= 1.) {
+
+					if (fp_isfinite(fval)) {
+
+						if (started != 0) {
+
+							fmin = (fval < fmin) ? fval : fmin;
+							fmax = (fval > fmax) ? fval : fmax;
+						}
+						else {
+							started = 1;
+
+							fmin = fval;
+							fmax = fval;
+						}
+					}
+				}
+
+				id_N++;
+			}
+			while (1);
+		}
+		else {
+			plotDataChunkSkip(pl, dN, &rN, &id_N);
+		}
+
+		if (rN == pl->data[dN].tail_N)
+			break;
 	}
 	while (1);
 
-	pl->rcache[xN].data_N = dN;
-	pl->rcache[xN].column_N = cN;
-	pl->rcache[xN].final_N = rN;
-	pl->rcache[xN].start = start;
-	pl->rcache[xN].fmin = fmin;
-	pl->rcache[xN].fmax = fmax;
-
+	*pflag = started;
 	*pmin = fmin;
 	*pmax = fmax;
 }
 
 static void
-plotDataRangeCond(plot_t *pl, int dN, int cN, int aN, double *pmin, double *pmax)
+plotDataRangeAxis(plot_t *pl, int dN, int cN, int aN, double *pmin, double *pmax)
 {
-	const fval_t	*row;
-	double		fval, fmin, fmax;
-	double		scale, offset, fcond;
-	int		rN, id_N, job, start;
-	int		xN, yN, fN, cN_cond;
+	double		scale, offset, fmin, fmax;
+	int		xN, yN, fN, cN_cond, job, started;
 
-	if (dN < 0 || dN >= PLOT_DATASET_MAX) {
+	started = 0;
 
-		ERROR("Dataset number is out of range\n");
-		return ;
-	}
-
-	if (cN >= pl->data[dN].column_N + PLOT_SUBTRACT) {
-
-		ERROR("Column number %i is out of range\n", cN);
-		return ;
-	}
-
-	start = 0;
-
-	fmin = (fval_t) 0.;
-	fmax = (fval_t) 0.;
+	fmin = 0.;
+	fmax = 0.;
 
 	for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
 
@@ -1314,50 +1797,17 @@ plotDataRangeCond(plot_t *pl, int dN, int cN, int aN, double *pmin, double *pmax
 			}
 		}
 
-		if (job) {
+		if (job != 0) {
 
 			scale *= pl->axis[aN].scale;
 			offset = offset * pl->axis[aN].scale + pl->axis[aN].offset;
 
-			rN = pl->data[dN].head_N;
-			id_N = pl->data[dN].id_N;
-
-			do {
-				row = plotDataGet(pl, dN, &rN);
-
-				if (row == NULL)
-					break;
-
-				fval = (cN < 0) ? id_N : row[cN];
-				fcond = (cN_cond < 0) ? id_N : row[cN_cond];
-
-				fcond = fcond * scale + offset;
-
-				if (fcond > (fval_t) 0. && fcond < (fval_t) 1.) {
-
-					if (fp_isfinite(fval)) {
-
-						if (start != 0) {
-
-							fmin = (fval < fmin) ? fval : fmin;
-							fmax = (fval > fmax) ? fval : fmax;
-						}
-						else {
-							start = 1;
-
-							fmin = fval;
-							fmax = fval;
-						}
-					}
-				}
-
-				id_N++;
-			}
-			while (1);
+			plotDataRangeCond(pl, dN, cN, cN_cond, &started,
+					scale, offset, &fmin, &fmax);
 		}
 	}
 
-	if (start != 0) {
+	if (started != 0) {
 
 		*pmin = fmin;
 		*pmax = fmax;
@@ -1365,6 +1815,195 @@ plotDataRangeCond(plot_t *pl, int dN, int cN, int aN, double *pmin, double *pmax
 	else {
 		plotDataRangeGet(pl, dN, cN, pmin, pmax);
 	}
+}
+
+static const fval_t *
+plotDataSliceGet(plot_t *pl, int dN, int cN, double fsamp, int *m_id_N)
+{
+	const fval_t	*row;
+	double		fval, fbest, fmin, fmax, fneard;
+	int		xN, lN, rN, id_N, kN, kN_rep, best_N;
+	int		job, started, span;
+
+	xN = plotDataRangeCacheFetch(pl, dN, cN);
+
+	rN = pl->data[dN].head_N;
+	id_N = pl->data[dN].id_N;
+
+	kN_rep = -1;
+
+	started = 0;
+	span = 0;
+
+	do {
+		kN = plotDataChunkN(pl, dN, rN);
+		job = 1;
+
+		if (xN >= 0 && pl->rcache[xN].chunk[kN].computed != 0) {
+
+			if (pl->rcache[xN].chunk[kN].finite != 0) {
+
+				fmin = pl->rcache[xN].chunk[kN].fmin;
+				fmax = pl->rcache[xN].chunk[kN].fmax;
+
+				if (fsamp < fmin || fsamp > fmax) {
+
+					job = 0;
+
+					fmin = fabs(fmin - fsamp);
+					fmax = fabs(fmax - fsamp);
+
+					if (kN_rep >= 0) {
+
+						if (fmin < fneard) {
+
+							fneard = fmin;
+							kN_rep = kN;
+						}
+
+						if (fmax < fneard) {
+
+							fneard = fmax;
+							kN_rep = kN;
+						}
+					}
+					else {
+						fneard = (fmin < fmax)
+							? fmin : fmax;
+
+						kN_rep = kN;
+					}
+				}
+			}
+			else {
+				job = 0;
+			}
+		}
+
+		if (job != 0) {
+
+			span++;
+
+			do {
+				if (kN != plotDataChunkN(pl, dN, rN))
+					break;
+
+				row = plotDataGet(pl, dN, &rN);
+
+				if (row == NULL)
+					break;
+
+				fval = (cN < 0) ? id_N : row[cN];
+
+				if (fp_isfinite(fval)) {
+
+					if (started != 0) {
+
+						fval = fabs(fsamp - fval);
+
+						if (fval < fbest) {
+
+							fbest = fval;
+							best_N = id_N;
+						}
+					}
+					else {
+						started = 1;
+
+						fbest = fabs(fsamp - fval);
+						best_N = id_N;
+					}
+				}
+
+				id_N++;
+			}
+			while (1);
+
+			if (span >= PLOT_SLICE_SPAN)
+				break;
+		}
+		else {
+			plotDataChunkSkip(pl, dN, &rN, &id_N);
+		}
+
+		if (rN == pl->data[dN].tail_N)
+			break;
+	}
+	while (1);
+
+	if (		started == 0
+			&& kN_rep >= 0) {
+
+		rN = pl->data[dN].head_N;
+		id_N = pl->data[dN].id_N;
+
+		do {
+			kN = plotDataChunkN(pl, dN, rN);
+			job = 1;
+
+			if (kN == kN_rep) {
+
+				do {
+					if (kN != plotDataChunkN(pl, dN, rN))
+						break;
+
+					row = plotDataGet(pl, dN, &rN);
+
+					if (row == NULL)
+						break;
+
+					fval = (cN < 0) ? id_N : row[cN];
+
+					if (fp_isfinite(fval)) {
+
+						if (started != 0) {
+
+							fval = fabs(fsamp - fval);
+
+							if (fval < fbest) {
+
+								fbest = fval;
+								best_N = id_N;
+							}
+						}
+						else {
+							started = 1;
+
+							fbest = fabs(fsamp - fval);
+							best_N = id_N;
+						}
+					}
+
+					id_N++;
+				}
+				while (1);
+			}
+			else {
+				plotDataChunkSkip(pl, dN, &rN, &id_N);
+			}
+
+			if (rN == pl->data[dN].tail_N)
+				break;
+		}
+		while (1);
+	}
+
+	if (started != 0) {
+
+		*m_id_N = best_N;
+
+		lN = pl->data[dN].length_N;
+
+		rN = pl->data[dN].head_N + (best_N - pl->data[dN].id_N);
+		rN = (rN > lN - 1) ? rN - lN : rN;
+
+		row = plotDataGet(pl, dN, &rN);
+	}
+	else {
+		row = NULL;
+	}
+
+	return row;
 }
 
 void plotAxisLabel(plot_t *pl, int aN, const char *label)
@@ -1403,7 +2042,7 @@ void plotAxisScaleAutoCond(plot_t *pl, int aN, int bN)
 {
 	double		min, max, fmin, fmax;
 	double		scale, offset;
-	int		fN, dN, cN, xN, yN, start = 0;
+	int		fN, dN, cN, xN, yN, started;
 
 	if (aN < 0 || aN >= PLOT_AXES_MAX) {
 
@@ -1422,6 +2061,8 @@ void plotAxisScaleAutoCond(plot_t *pl, int aN, int bN)
 
 	if (pl->axis[aN].slave != 0)
 		return ;
+
+	started = 0;
 
 	for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
 
@@ -1442,16 +2083,16 @@ void plotAxisScaleAutoCond(plot_t *pl, int aN, int bN)
 					plotDataRangeGet(pl, dN, cN, &min, &max);
 				}
 				else {
-					plotDataRangeCond(pl, dN, cN, bN, &min, &max);
+					plotDataRangeAxis(pl, dN, cN, bN, &min, &max);
 				}
 
-				if (start != 0) {
+				if (started != 0) {
 
 					fmin = (min < fmin) ? min : fmin;
 					fmax = (max > fmax) ? max : fmax;
 				}
 				else {
-					start = 1;
+					started = 1;
 
 					fmin = min;
 					fmax = max;
@@ -1483,19 +2124,19 @@ void plotAxisScaleAutoCond(plot_t *pl, int aN, int bN)
 					plotDataRangeGet(pl, dN, cN, &min, &max);
 				}
 				else {
-					plotDataRangeCond(pl, dN, cN, bN, &min, &max);
+					plotDataRangeAxis(pl, dN, cN, bN, &min, &max);
 				}
 
 				min = min * scale + offset;
 				max = max * scale + offset;
 
-				if (start != 0) {
+				if (started != 0) {
 
 					fmin = (min < fmin) ? min : fmin;
 					fmax = (max > fmax) ? max : fmax;
 				}
 				else {
-					start = 1;
+					started = 1;
 
 					fmin = min;
 					fmax = max;
@@ -1505,7 +2146,7 @@ void plotAxisScaleAutoCond(plot_t *pl, int aN, int bN)
 		}
 	}
 
-	if (start != 0) {
+	if (started != 0) {
 
 		if (fmin == fmax) {
 
@@ -2059,7 +2700,7 @@ void plotFigureAdd(plot_t *pl, int fN, int dN, int nX, int nY, int aX, int aY, c
 
 	if (pl->data[dN].column_N < 1) {
 
-		ERROR("Dataset %i has no data\n", dN);
+		ERROR("Dataset %i has no DATA\n", dN);
 		return ;
 	}
 
@@ -2094,9 +2735,10 @@ void plotFigureAdd(plot_t *pl, int fN, int dN, int nX, int nY, int aX, int aY, c
 		return ;
 	}
 
+	pl->draw[fN].sketch = SKETCH_FINISHED;
+
 	pl->figure[fN].busy = 1;
 	pl->figure[fN].hidden = 0;
-	pl->figure[fN].sketched = 0;
 	pl->figure[fN].drawing = pl->default_drawing;
 	pl->figure[fN].width = pl->default_width;
 	pl->figure[fN].data_N = dN;
@@ -2135,6 +2777,33 @@ void plotFigureAdd(plot_t *pl, int fN, int dN, int nX, int nY, int aX, int aY, c
 
 	pl->on_X = (pl->on_X < 0) ? aX : pl->on_X;
 	pl->on_Y = (pl->on_Y < 0) ? aY : pl->on_Y;
+}
+
+static void
+plotDataBoxTextFmt(plot_t *pl, int fN, double val)
+{
+	char		tfmt[PLOT_STRING_MAX];
+	char		tbuf[PLOT_STRING_MAX];
+
+	int		fexp = 1;
+
+	if (val != 0.) {
+
+		fexp += (int) floor(log10(fabs(val)));
+	}
+
+	if (fexp >= -2 && fexp < pl->fprecision) {
+
+		fexp = (fexp < 1) ? 1 : fexp;
+
+		sprintf(tfmt, "%% .%df ", pl->fprecision - fexp);
+	}
+	else {
+		sprintf(tfmt, "%% .%dE ", pl->fprecision - 1);
+	}
+
+	sprintf(tbuf, tfmt, val);
+	strcat(pl->data_box_text[fN], tbuf);
 }
 
 static int
@@ -2201,7 +2870,7 @@ plotCheckColumnLinked(plot_t *pl, int dN, int cN)
 }
 
 static void
-plotGarbageSubtractCollect(plot_t *pl, int dN)
+plotSubtractGarbage(plot_t *pl, int dN)
 {
 	int		sN, cN, N;
 
@@ -2296,7 +2965,21 @@ void plotFigureRemove(plot_t *pl, int fN)
 		}
 	}
 
-	plotGarbageSubtractCollect(pl, pl->figure[fN].data_N);
+	plotSubtractGarbage(pl, pl->figure[fN].data_N);
+}
+
+void plotFigureGarbage(plot_t *pl, int dN)
+{
+	int		fN;
+
+	for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
+
+		if (		pl->figure[fN].busy != 0
+				&& pl->figure[fN].data_N == dN) {
+
+			plotFigureRemove(pl, fN);
+		}
+	}
 }
 
 void plotFigureMoveAxes(plot_t *pl, int fN)
@@ -2596,7 +3279,7 @@ int plotGetSubtractResample(plot_t *pl, int dN, int cN_X, int in_dN, int in_cN_X
 	pl->data[dN].sub[sN].op.resample.column_X = cN_X;
 	pl->data[dN].sub[sN].op.resample.column_in_X = in_cN_X;
 	pl->data[dN].sub[sN].op.resample.column_in_Y = in_cN_Y;
-	pl->data[dN].sub[sN].op.resample.in_dN = in_dN;
+	pl->data[dN].sub[sN].op.resample.in_data_N = in_dN;
 
 	plotDataSubtract(pl, dN, sN);
 
@@ -2942,7 +3625,7 @@ plotFigureSubtractBinaryLinked(plot_t *pl, int fN, int opSUB, int fNP[2])
 				&& pl->data[dN].sub[sE].busy == SUBTRACT_RESAMPLE) {
 
 			cN = pl->data[dN].sub[sE].op.resample.column_in_Y;
-			dN = pl->data[dN].sub[sE].op.resample.in_dN;
+			dN = pl->data[dN].sub[sE].op.resample.in_data_N;
 		}
 
 		for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
@@ -3096,6 +3779,121 @@ void plotFigureSubtractSwitch(plot_t *pl, int opSUB)
 	}
 }
 
+void plotFigureSubtractPolifit(plot_t *pl, int fN_1, int poly_N)
+{
+	int		N, fN, dN, sN, cN, aN, bN;
+	double		scale_X, offset_X, scale_Y, offset_Y;
+
+	if (fN_1 < 0 || fN_1 >= PLOT_FIGURE_MAX) {
+
+		ERROR("Figure number is out of range\n");
+		return ;
+	}
+
+	if (poly_N < 0 || poly_N > PLOT_POLYFIT_MAX) {
+
+		ERROR("Polynomial degree is out of range\n");
+		return ;
+	}
+
+	fN = plotGetFreeFigure(pl);
+
+	if (fN == -1) {
+
+		ERROR("Unable to get free figure to subtract\n");
+		return ;
+	}
+
+	dN = pl->figure[fN_1].data_N;
+	sN = plotGetFreeSubtract(pl, dN);
+
+	if (sN == -1) {
+
+		ERROR("Unable to get free subtract\n");
+		return ;
+	}
+
+	aN = pl->figure[fN_1].axis_X;
+
+	scale_X = pl->axis[aN].scale;
+	offset_X = pl->axis[aN].offset;
+
+	if (pl->axis[aN].slave != 0) {
+
+		bN = pl->axis[aN].slave_N;
+		scale_X *= pl->axis[bN].scale;
+		offset_X = offset_X * pl->axis[bN].scale + pl->axis[bN].offset;
+	}
+
+	aN = pl->figure[fN_1].axis_Y;
+
+	scale_Y = pl->axis[aN].scale;
+	offset_Y = pl->axis[aN].offset;
+
+	if (pl->axis[aN].slave != 0) {
+
+		bN = pl->axis[aN].slave_N;
+		scale_Y *= pl->axis[bN].scale;
+		offset_Y = offset_X * pl->axis[bN].scale + pl->axis[bN].offset;
+	}
+
+	plotDataPolyfit(pl, dN, pl->figure[fN_1].column_X, pl->figure[fN_1].column_Y,
+			scale_X, offset_X, scale_Y, offset_Y, poly_N);
+
+	pl->data[dN].sub[sN].busy = SUBTRACT_POLYFIT;
+	pl->data[dN].sub[sN].op.polyfit.column_X = pl->figure[fN_1].column_X;
+	pl->data[dN].sub[sN].op.polyfit.column_Y = pl->figure[fN_1].column_Y;
+	pl->data[dN].sub[sN].op.polyfit.poly_N = poly_N;
+
+	for (N = 0; N < poly_N + 1; ++N) {
+
+		pl->data[dN].sub[sN].op.polyfit.coefs[N] = pl->lsq.b[N];
+	}
+
+	plotDataSubtract(pl, dN, sN);
+
+	cN = sN + pl->data[dN].column_N;
+	aN = pl->figure[fN_1].axis_Y;
+
+	plotFigureAdd(pl, fN, dN, pl->figure[fN_1].column_X, cN,
+			pl->figure[fN_1].axis_X, aN, "");
+
+	sprintf(pl->figure[fN].label, "P: %.75s", pl->figure[fN_1].label);
+
+	pl->figure[fN].drawing = pl->figure[fN_1].drawing;
+	pl->figure[fN].width = pl->figure[fN_1].width;
+
+	for (N = 0; N < PLOT_DATA_BOX_MAX; ++N) {
+
+		pl->data_box_text[N][0] = 0;
+
+		if (N == 0 && poly_N == 0) {
+
+			sprintf(pl->data_box_text[N], " [%i] = ", N);
+			plotDataBoxTextFmt(pl, N, pl->lsq.b[N]);
+		}
+		else if (N < poly_N + 1) {
+
+			char		sfmt[PLOT_STRING_MAX];
+
+			sprintf(sfmt, " [%%i] = %% .%iE ", pl->fprecision - 1);
+			sprintf(pl->data_box_text[N], sfmt, N, pl->lsq.b[N]);
+		}
+		else if (N == poly_N + 1) {
+
+			sprintf(pl->data_box_text[N], " STD = ");
+			plotDataBoxTextFmt(pl, N, pl->lsq.e[0]);
+		}
+	}
+
+	if (pl->data_box_on != DATA_BOX_POLYFIT) {
+
+		pl->data_box_on = DATA_BOX_POLYFIT;
+		pl->data_box_X = pl->viewport.max_x;
+		pl->data_box_Y = 0;
+	}
+}
+
 void plotFigureClean(plot_t *pl)
 {
 	int		fN;
@@ -3104,7 +3902,6 @@ void plotFigureClean(plot_t *pl)
 
 		pl->figure[fN].busy = 0;
 		pl->figure[fN].hidden = 0;
-		pl->figure[fN].sketched = 0;
 		pl->figure[fN].label[0] = 0;
 	}
 
@@ -3120,7 +3917,7 @@ void plotFigureClean(plot_t *pl)
 	pl->legend_X = 0;
 	pl->legend_Y = 0;
 
-	pl->data_box_on = 0;
+	pl->data_box_on = DATA_BOX_FREE;
 	pl->data_box_X = pl->viewport.max_x;
 	pl->data_box_Y = 0;
 
@@ -3160,8 +3957,6 @@ plotMarkLayout(plot_t *pl)
 		return ;
 	}
 
-	plotDataSliceCacheClean(pl);
-
 	bH = (double) pl->layout_mark * sqrt(fig_N) * 4.;
 
 	pl->mark_N = (int) ((pl->viewport.max_x - pl->viewport.min_x) / bH);
@@ -3193,8 +3988,8 @@ plotMarkLayout(plot_t *pl)
 				fval_X = (N * fig_N + fN_1) * bH;
 				fval_X = (fval_X - offset) / scale;
 
-				row = plotDataGetSliceFinal(pl, pl->figure[fN].data_N,
-								cZ, fval_X, &id_N);
+				row = plotDataSliceGet(pl, pl->figure[fN].data_N,
+							cZ, fval_X, &id_N);
 
 				if (row != NULL) {
 
@@ -3345,33 +4140,6 @@ void plotGroupScale(plot_t *pl, int gN, double scale, double offset)
 	pl->group[gN].offset = offset;
 }
 
-static void
-plotSliceTextFmt(plot_t *pl, int fN, double val)
-{
-	char		tfmt[PLOT_STRING_MAX];
-	char		tbuf[PLOT_STRING_MAX];
-
-	int		fexp = 1;
-
-	if (val != 0.) {
-
-		fexp += (int) floor(log10(fabs(val)));
-	}
-
-	if (fexp >= -2 && fexp < pl->fprecision) {
-
-		fexp = (fexp < 1) ? 1 : fexp;
-
-		sprintf(tfmt, "%% .%df ", pl->fprecision - fexp);
-	}
-	else {
-		sprintf(tfmt, "%% .%dE ", pl->fprecision - 1);
-	}
-
-	sprintf(tbuf, tfmt, val);
-	strcat(pl->data_box_text[fN], tbuf);
-}
-
 void plotSliceSwitch(plot_t *pl)
 {
 	int		fN;
@@ -3409,20 +4177,15 @@ void plotSliceTrack(plot_t *pl, int cur_X, int cur_Y)
 	if (pl->slice_range_on == 2)
 		return ;
 
-	if (pl->slice_axis_N == -1) {
+	if (pl->slice_axis_N < 0) {
 
 		pl->slice_axis_N = pl->on_X;
 	}
 
-	if (pl->slice_axis_N == -1) {
+	if (pl->slice_axis_N < 0) {
 
 		ERROR("No valid axis number to slice\n");
 		return ;
-	}
-
-	if (pl->data_box_on == 0) {
-
-		plotDataSliceCacheClean(pl);
 	}
 
 	dN_s = -1;
@@ -3499,7 +4262,7 @@ void plotSliceTrack(plot_t *pl, int cur_X, int cur_Y)
 
 			if (dN_s != dN || aN_s != aN || cX_s != cX) {
 
-				row = plotDataGetSlice(pl, dN, cX,
+				row = plotDataSliceGet(pl, dN, cX,
 						fval_X, &id_N);
 
 				dN_s = dN;
@@ -3533,22 +4296,22 @@ void plotSliceTrack(plot_t *pl, int cur_X, int cur_Y)
 				fval_X = pl->figure[fN].slice_base_X;
 				fval_Y = pl->figure[fN].slice_base_Y;
 
-				strcat(pl->data_box_text[fN], "\xCE\x94");
-				plotSliceTextFmt(pl, fN, pl->figure[fN].slice_X - fval_X);
+				strcat(pl->data_box_text[fN], " \xCE\x94");
+				plotDataBoxTextFmt(pl, fN, pl->figure[fN].slice_X - fval_X);
 
 				strcat(pl->data_box_text[fN], "\xCE\x94");
-				plotSliceTextFmt(pl, fN, pl->figure[fN].slice_Y - fval_Y);
+				plotDataBoxTextFmt(pl, fN, pl->figure[fN].slice_Y - fval_Y);
 			}
 			else {
-				plotSliceTextFmt(pl, fN, pl->figure[fN].slice_X);
-				plotSliceTextFmt(pl, fN, pl->figure[fN].slice_Y);
+				plotDataBoxTextFmt(pl, fN, pl->figure[fN].slice_X);
+				plotDataBoxTextFmt(pl, fN, pl->figure[fN].slice_Y);
 			}
 		}
 	}
 
-	if (pl->data_box_on == 0) {
+	if (pl->data_box_on != DATA_BOX_SLICE) {
 
-		pl->data_box_on = 1;
+		pl->data_box_on = DATA_BOX_SLICE;
 		pl->data_box_X = pl->viewport.max_x;
 		pl->data_box_Y = 0;
 	}
@@ -3721,23 +4484,21 @@ plotSketchDataChunkSetUp(plot_t *pl, int fN)
 {
 	int		hN;
 
-	hN = pl->sketch_list_todraw_end;
+	hN = pl->draw[fN].list_self;
 
-	if (hN >= 0	&& pl->sketch[hN].epoch_ID > pl->sketch_epoch_final_ID
-			&& pl->sketch[hN].figure_N == fN
+	if (hN >= 0	&& pl->sketch[hN].figure_N == fN
 			&& pl->sketch[hN].drawing == pl->figure[fN].drawing
 			&& pl->sketch[hN].width == pl->figure[fN].width
 			&& pl->sketch[hN].length < PLOT_SKETCH_CHUNK_SIZE) {
 
+		/* Keep using this chunk */
 	}
 	else if (pl->sketch_list_garbage >= 0) {
 
 		hN = pl->sketch_list_garbage;
 		pl->sketch_list_garbage = pl->sketch[hN].linked;
 
-		pl->sketch[hN].epoch_ID = pl->sketch_epoch_now_ID;
 		pl->sketch[hN].figure_N = fN;
-
 		pl->sketch[hN].drawing = pl->figure[fN].drawing;
 		pl->sketch[hN].width = pl->figure[fN].width;
 
@@ -3752,52 +4513,69 @@ plotSketchDataChunkSetUp(plot_t *pl, int fN)
 		}
 
 		pl->sketch[hN].length = 0;
-		pl->sketch[hN].linked = -1;
 
-		if (pl->sketch_list_todraw_end >= 0) {
+		if (pl->draw[fN].list_self >= 0) {
 
-			pl->sketch[pl->sketch_list_todraw_end].linked = hN;
-			pl->sketch_list_todraw_end = hN;
+			pl->sketch[hN].linked = pl->sketch[pl->draw[fN].list_self].linked;
+			pl->sketch[pl->draw[fN].list_self].linked = hN;
+
+			if (pl->draw[fN].list_self == pl->sketch_list_current_end)
+				pl->sketch_list_current_end = hN;
 		}
 		else {
-			pl->sketch_list_todraw = hN;
-			pl->sketch_list_todraw_end = hN;
+			pl->sketch[hN].linked = -1;
+
+			if (pl->sketch_list_current >= 0) {
+
+				pl->sketch[pl->sketch_list_current_end].linked = hN;
+				pl->sketch_list_current_end = hN;
+			}
+			else {
+				pl->sketch_list_current = hN;
+				pl->sketch_list_current_end = hN;
+			}
 		}
+
+		pl->draw[fN].list_self = hN;
 	}
 	else {
 		ERROR("Unable to get free sketch chunk\n");
+
+		pl->draw[fN].list_self = -1;
 	}
 }
 
 static void
-plotSketchDataAdd(plot_t *pl, double X, double Y)
+plotSketchDataAdd(plot_t *pl, int fN, double X, double Y)
 {
-	int		hN, len;
+	int		hN, length;
 
-	hN = pl->sketch_list_todraw_end;
-	len = pl->sketch[hN].length;
+	hN = pl->draw[fN].list_self;
 
-	pl->sketch[hN].chunk[len++] = X;
-	pl->sketch[hN].chunk[len++] = Y;
-	pl->sketch[hN].length = len;
+	if (hN >= 0) {
 
-	if (len >= PLOT_SKETCH_CHUNK_SIZE) {
+		length = pl->sketch[hN].length;
 
-		plotSketchDataChunkSetUp(pl, pl->sketch[hN].figure_N);
+		pl->sketch[hN].chunk[length++] = X;
+		pl->sketch[hN].chunk[length++] = Y;
+
+		pl->sketch[hN].length = length;
+
+		if (length >= PLOT_SKETCH_CHUNK_SIZE) {
+
+			plotSketchDataChunkSetUp(pl, fN);
+		}
 	}
 }
 
 static void
-plotSketchGarbageCollect(plot_t *pl, int limit_ID)
+plotSketchGarbage(plot_t *pl)
 {
-	int		hN, linked;
+	int		N, hN, linked;
 
 	hN = pl->sketch_list_todraw;
 
 	while (hN >= 0) {
-
-		if (pl->sketch[hN].epoch_ID > limit_ID)
-			break;
 
 		linked = pl->sketch[hN].linked;
 
@@ -3807,22 +4585,50 @@ plotSketchGarbageCollect(plot_t *pl, int limit_ID)
 		hN = linked;
 	}
 
-	pl->sketch_list_todraw = hN;
+	pl->sketch_list_todraw = pl->sketch_list_current;
+	pl->sketch_list_current = -1;
+	pl->sketch_list_current_end = -1;
 
-	if (hN < 0) {
-
-		pl->sketch_list_todraw_end = -1;
-	}
+	for (N = 0; N < PLOT_FIGURE_MAX; ++N)
+		pl->draw[N].list_self = -1;
 }
 
 void plotSketchClean(plot_t *pl)
 {
-	if (pl->sketch_epoch_now_ID != 0) {
+	int		N, hN, linked;
 
-		plotSketchGarbageCollect(pl, pl->sketch_epoch_now_ID);
+	hN = pl->sketch_list_todraw;
 
-		pl->draw_interrupt = 0;
+	while (hN >= 0) {
+
+		linked = pl->sketch[hN].linked;
+
+		pl->sketch[hN].linked = pl->sketch_list_garbage;
+		pl->sketch_list_garbage = hN;
+
+		hN = linked;
 	}
+
+	hN = pl->sketch_list_current;
+
+	while (hN >= 0) {
+
+		linked = pl->sketch[hN].linked;
+
+		pl->sketch[hN].linked = pl->sketch_list_garbage;
+		pl->sketch_list_garbage = hN;
+
+		hN = linked;
+	}
+
+	pl->sketch_list_todraw = -1;
+	pl->sketch_list_current = -1;
+	pl->sketch_list_current_end = -1;
+
+	for (N = 0; N < PLOT_FIGURE_MAX; ++N)
+		pl->draw[N].list_self = -1;
+
+	pl->draw_in_progress = 0;
 }
 
 static void
@@ -3848,14 +4654,13 @@ plotDrawPalette(plot_t *pl)
 }
 
 static void
-plotDrawTrialFigure(plot_t *pl, int fN, int tTOP)
+plotDrawFigureTrial(plot_t *pl, int fN)
 {
 	const fval_t	*row;
-	double		scale_X, scale_Y, offset_X, offset_Y;
+	double		scale_X, scale_Y, offset_X, offset_Y, im_MIN, im_MAX;
 	double		X, Y, last_X, last_Y, im_X, im_Y, last_im_X, last_im_Y;
-	int		dN, rN, lN, xN, yN, aN, bN, id_N, line, rc;
-
-	int		ncolor, fdrawing, fwidth;
+	int		dN, rN, xN, yN, xNR, yNR, aN, bN, id_N, top_N, kN, kN_cached;
+	int		job, skipped, line, rc, ncolor, fdrawing, fwidth;
 
 	ncolor = (pl->figure[fN].hidden != 0) ? 9 : fN + 1;
 
@@ -3865,6 +4670,9 @@ plotDrawTrialFigure(plot_t *pl, int fN, int tTOP)
 	dN = pl->figure[fN].data_N;
 	xN = pl->figure[fN].column_X;
 	yN = pl->figure[fN].column_Y;
+
+	xNR = plotDataRangeCacheFetch(pl, dN, xN);
+	yNR = plotDataRangeCacheFetch(pl, dN, yN);
 
 	aN = pl->figure[fN].axis_X;
 	scale_X = pl->axis[aN].scale;
@@ -3896,90 +4704,136 @@ plotDrawTrialFigure(plot_t *pl, int fN, int tTOP)
 	scale_Y *= Y;
 	offset_Y = offset_Y * Y + pl->viewport.max_y;
 
-	if (pl->draw_interrupt == 0) {
+	rN = pl->draw[fN].rN;
+	id_N = pl->draw[fN].id_N;
 
-		rN = pl->data[dN].head_N;
-		id_N = pl->data[dN].id_N;
-	}
-	else {
-		if (pl->draw_data_rN >= pl->data[dN].length_N) {
-
-			rN = pl->data[dN].head_N;
-			id_N = pl->data[dN].id_N;
-		}
-		else {
-			rN = pl->draw_data_rN;
-			id_N = pl->draw_data_id_N;
-
-			if (rN != pl->data[dN].head_N) {
-
-				lN = pl->data[dN].length_N;
-
-				rN = (rN != 0) ? rN - 1 : lN - 1;
-				id_N--;
-			}
-		}
-	}
+	top_N = id_N + (1UL << pl->data[dN].chunk_SHIFT);
+	kN_cached = -1;
 
 	plotSketchDataChunkSetUp(pl, fN);
 
 	if (		fdrawing == FIGURE_DRAWING_LINE
 			|| fdrawing == FIGURE_DRAWING_DASH) {
 
-		line = 0;
+		skipped = pl->draw[fN].skipped;
+		line = pl->draw[fN].line;
+
+		last_X = pl->draw[fN].last_X;
+		last_Y = pl->draw[fN].last_Y;
+
+		last_im_X = last_X * scale_X + offset_X;
+		last_im_Y = last_Y * scale_Y + offset_Y;
 
 		do {
-			row = plotDataGet(pl, dN, &rN);
+			kN = plotDataChunkN(pl, dN, rN);
+			job = 1;
 
-			if (row == NULL) {
+			if (kN != kN_cached) {
 
-				pl->figure[fN].sketched = 1;
-				pl->draw_interrupt = 0;
-				break;
-			}
+				if (xNR >= 0 && pl->rcache[xNR].chunk[kN].computed != 0) {
 
-			X = (xN < 0) ? id_N : row[xN];
-			Y = (yN < 0) ? id_N : row[yN];
+					if (pl->rcache[xNR].chunk[kN].finite != 0) {
 
-			im_X = X * scale_X + offset_X;
-			im_Y = Y * scale_Y + offset_Y;
+						im_MIN = pl->rcache[xNR].chunk[kN].fmin * scale_X + offset_X;
+						im_MAX = pl->rcache[xNR].chunk[kN].fmax * scale_X + offset_X;
 
-			if (fp_isfinite(im_X) && fp_isfinite(im_Y)) {
-
-				if (line != 0) {
-
-					rc = drawLineTrial(pl->dw, &pl->viewport,
-							last_im_X, last_im_Y, im_X, im_Y,
-							ncolor, fwidth);
-
-					if (rc != 0) {
-
-						plotSketchDataAdd(pl, last_X, last_Y);
-						plotSketchDataAdd(pl, X, Y);
+						job = (	   im_MAX < pl->viewport.min_x - 16
+							|| im_MIN > pl->viewport.max_x + 16) ? 0 : job;
+					}
+					else {
+						job = 0;
 					}
 				}
-				else {
-					line = 1;
+
+				if (yNR >= 0 && pl->rcache[yNR].chunk[kN].computed != 0) {
+
+					if (pl->rcache[yNR].chunk[kN].finite != 0) {
+
+						im_MIN = pl->rcache[yNR].chunk[kN].fmin * scale_Y + offset_Y;
+						im_MAX = pl->rcache[yNR].chunk[kN].fmax * scale_Y + offset_Y;
+
+						job = (	   im_MIN < pl->viewport.min_y - 16
+							|| im_MAX > pl->viewport.max_y + 16) ? 0 : job;
+					}
+					else {
+						job = 0;
+					}
 				}
 
-				last_X = X;
-				last_Y = Y;
-
-				last_im_X = im_X;
-				last_im_Y = im_Y;
+				kN_cached = kN;
 			}
-			else {
+
+			if (job != 0 || line != 0) {
+
+				if (skipped != 0) {
+
+					plotDataSkip(pl, dN, &rN, &id_N, -1);
+
+					skipped = 0;
+				}
+
+				row = plotDataGet(pl, dN, &rN);
+
+				if (row == NULL) {
+
+					pl->draw[fN].sketch = SKETCH_FINISHED;
+					break;
+				}
+
+				X = (xN < 0) ? id_N : row[xN];
+				Y = (yN < 0) ? id_N : row[yN];
+
+				im_X = X * scale_X + offset_X;
+				im_Y = Y * scale_Y + offset_Y;
+
+				if (fp_isfinite(im_X) && fp_isfinite(im_Y)) {
+
+					if (line != 0) {
+
+						rc = drawLineTrial(pl->dw, &pl->viewport,
+								last_im_X, last_im_Y, im_X, im_Y,
+								ncolor, fwidth);
+
+						if (rc != 0) {
+
+							plotSketchDataAdd(pl, fN, last_X, last_Y);
+							plotSketchDataAdd(pl, fN, X, Y);
+						}
+					}
+					else {
+						line = 1;
+					}
+
+					last_X = X;
+					last_Y = Y;
+
+					last_im_X = im_X;
+					last_im_Y = im_Y;
+				}
+				else {
+					line = 0;
+				}
+
+				id_N++;
+			}
+
+			if (job == 0) {
+
+				plotDataChunkSkip(pl, dN, &rN, &id_N);
+
+				skipped = 1;
 				line = 0;
 			}
 
-			id_N++;
+			if (id_N > top_N) {
 
-			if (SDL_GetTicks() > tTOP) {
-
-				pl->draw_interrupt = 1;
-				pl->draw_figure_N = fN;
-				pl->draw_data_rN = rN;
-				pl->draw_data_id_N = id_N;
+				pl->draw[fN].sketch = SKETCH_INTERRUPTED;
+				pl->draw[fN].rN = rN;
+				pl->draw[fN].id_N = id_N;
+				pl->draw[fN].skipped = skipped;
+				pl->draw[fN].line = line;
+				pl->draw[fN].last_X = last_X;
+				pl->draw[fN].last_Y = last_Y;
 				break;
 			}
 		}
@@ -3988,41 +4842,85 @@ plotDrawTrialFigure(plot_t *pl, int fN, int tTOP)
 	else if (fdrawing == FIGURE_DRAWING_DOT) {
 
 		do {
-			row = plotDataGet(pl, dN, &rN);
+			kN = plotDataChunkN(pl, dN, rN);
+			job = 1;
 
-			if (row == NULL) {
+			if (kN != kN_cached) {
 
-				pl->figure[fN].sketched = 1;
-				pl->draw_interrupt = 0;
-				break;
-			}
+				if (xNR >= 0 && pl->rcache[xNR].chunk[kN].computed != 0) {
 
-			X = (xN < 0) ? id_N : row[xN];
-			Y = (yN < 0) ? id_N : row[yN];
+					if (pl->rcache[xNR].chunk[kN].finite != 0) {
 
-			im_X = X * scale_X + offset_X;
-			im_Y = Y * scale_Y + offset_Y;
+						im_MIN = pl->rcache[xNR].chunk[kN].fmin * scale_X + offset_X;
+						im_MAX = pl->rcache[xNR].chunk[kN].fmax * scale_X + offset_X;
 
-			if (fp_isfinite(im_X) && fp_isfinite(im_Y)) {
-
-				rc = drawDotTrial(pl->dw, &pl->viewport,
-						im_X, im_Y, fwidth,
-						ncolor, 1);
-
-				if (rc != 0) {
-
-					plotSketchDataAdd(pl, X, Y);
+						job = (	   im_MAX < pl->viewport.min_x - 16
+							|| im_MIN > pl->viewport.max_x + 16) ? 0 : job;
+					}
+					else {
+						job = 0;
+					}
 				}
+
+				if (yNR >= 0 && pl->rcache[yNR].chunk[kN].computed != 0) {
+
+					if (pl->rcache[yNR].chunk[kN].finite != 0) {
+
+						im_MIN = pl->rcache[yNR].chunk[kN].fmin * scale_Y + offset_Y;
+						im_MAX = pl->rcache[yNR].chunk[kN].fmax * scale_Y + offset_Y;
+
+						job = (	   im_MIN < pl->viewport.min_y - 16
+							|| im_MAX > pl->viewport.max_y + 16) ? 0 : job;
+					}
+					else {
+						job = 0;
+					}
+				}
+
+				kN_cached = kN;
 			}
 
-			id_N++;
+			if (job != 0) {
 
-			if (SDL_GetTicks() > tTOP) {
+				row = plotDataGet(pl, dN, &rN);
 
-				pl->draw_interrupt = 1;
-				pl->draw_figure_N = fN;
-				pl->draw_data_rN = rN;
-				pl->draw_data_id_N = id_N;
+				if (row == NULL) {
+
+					pl->draw[fN].sketch = SKETCH_FINISHED;
+					break;
+				}
+
+				X = (xN < 0) ? id_N : row[xN];
+				Y = (yN < 0) ? id_N : row[yN];
+
+				im_X = X * scale_X + offset_X;
+				im_Y = Y * scale_Y + offset_Y;
+
+				if (fp_isfinite(im_X) && fp_isfinite(im_Y)) {
+
+					rc = drawDotTrial(pl->dw, &pl->viewport,
+							im_X, im_Y, fwidth,
+							ncolor, 1);
+
+					if (rc != 0) {
+
+						plotSketchDataAdd(pl, fN, X, Y);
+					}
+				}
+
+				id_N++;
+			}
+
+			if (job == 0) {
+
+				plotDataChunkSkip(pl, dN, &rN, &id_N);
+			}
+
+			if (id_N > top_N) {
+
+				pl->draw[fN].sketch = SKETCH_INTERRUPTED;
+				pl->draw[fN].rN = rN;
+				pl->draw[fN].id_N = id_N;
 				break;
 			}
 		}
@@ -4047,9 +4945,6 @@ plotDrawSketch(plot_t *pl, SDL_Surface *surface)
 	SDL_LockSurface(surface);
 
 	while (hN >= 0) {
-
-		if (pl->sketch[hN].epoch_ID > pl->sketch_epoch_final_ID)
-			break;
 
 		fN = pl->sketch[hN].figure_N;
 
@@ -4530,7 +5425,7 @@ plotLegendLayout(plot_t *pl)
 		}
 	}
 
-	pl->legend_size_X = size_MAX;
+	pl->legend_size_X = size_MAX + pl->layout_font_long * 2;
 	pl->legend_N = size_N;
 
 	if (pl->legend_X > pl->viewport.max_x - (size_MAX + pl->layout_font_height * 3))
@@ -4665,7 +5560,7 @@ plotLegendDraw(plot_t *pl, SDL_Surface *surface)
 
 			SDL_UnlockSurface(surface);
 
-			drawText(pl->dw, surface, pl->font, legX + pl->layout_font_height * 2,
+			drawText(pl->dw, surface, pl->font, legX + pl->layout_font_height * 2 + pl->layout_font_long,
 				boxY, pl->figure[fN].label, TEXT_CENTERED_ON_Y,
 				(pl->figure[fN].hidden) ? pl->sch->plot_hidden : pl->sch->plot_text);
 
@@ -4727,17 +5622,33 @@ int plotLegendBoxGetByClick(plot_t *pl, int cur_X, int cur_Y)
 static void
 plotDataBoxLayout(plot_t *pl)
 {
-	int		fN, size_X, size_Y;
+	int		N, size_X, size_Y;
 	int		size_N = 0, size_MAX = 0;
 
-	for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
+	if (pl->data_box_on == DATA_BOX_SLICE) {
 
-		if (pl->figure[fN].busy != 0) {
+		for (N = 0; N < PLOT_FIGURE_MAX; ++N) {
 
-			TTF_SizeUTF8(pl->font, pl->data_box_text[fN], &size_X, &size_Y);
-			size_MAX = (size_MAX < size_X) ? size_X : size_MAX;
+			if (pl->figure[N].busy != 0) {
 
-			size_N++;
+				TTF_SizeUTF8(pl->font, pl->data_box_text[N], &size_X, &size_Y);
+
+				size_MAX = (size_MAX < size_X) ? size_X : size_MAX;
+				size_N++;
+			}
+		}
+	}
+	else if (pl->data_box_on == DATA_BOX_POLYFIT) {
+
+		for (N = 0; N < PLOT_DATA_BOX_MAX; ++N) {
+
+			if (pl->data_box_text[N][0] != 0) {
+
+				TTF_SizeUTF8(pl->font, pl->data_box_text[N], &size_X, &size_Y);
+
+				size_MAX = (size_MAX < size_X) ? size_X : size_MAX;
+				size_N++;
+			}
 		}
 	}
 
@@ -4761,7 +5672,7 @@ static void
 plotDataBoxDraw(plot_t *pl, SDL_Surface *surface)
 {
 	int		boxY, size_X, size_Y;
-	int		fN, legX, legY;
+	int		N, legX, legY;
 
 	legX = pl->data_box_X;
 	legY = pl->data_box_Y;
@@ -4783,20 +5694,39 @@ plotDataBoxDraw(plot_t *pl, SDL_Surface *surface)
 
 	SDL_UnlockSurface(surface);
 
-	for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
+	if (pl->data_box_on == DATA_BOX_SLICE) {
 
-		if (pl->figure[fN].busy != 0) {
+		for (N = 0; N < PLOT_FIGURE_MAX; ++N) {
 
-			if (pl->data_box_text[fN][0] != 0) {
+			if (pl->figure[N].busy != 0) {
+
+				if (pl->data_box_text[N][0] != 0) {
+
+					boxY = legY + pl->layout_font_height / 2;
+
+					drawText(pl->dw, surface, pl->font, legX, boxY,
+							pl->data_box_text[N], TEXT_CENTERED_ON_Y,
+							pl->sch->plot_figure[N]);
+				}
+
+				legY += pl->layout_font_height;
+			}
+		}
+	}
+	else if (pl->data_box_on == DATA_BOX_POLYFIT) {
+
+		for (N = 0; N < PLOT_DATA_BOX_MAX; ++N) {
+
+			if (pl->data_box_text[N][0] != 0) {
 
 				boxY = legY + pl->layout_font_height / 2;
 
 				drawText(pl->dw, surface, pl->font, legX, boxY,
-						pl->data_box_text[fN], TEXT_CENTERED_ON_Y,
-						pl->sch->plot_figure[fN]);
-			}
+						pl->data_box_text[N], TEXT_CENTERED_ON_Y,
+						pl->sch->plot_text);
 
-			legY += pl->layout_font_height;
+				legY += pl->layout_font_height;
+			}
 		}
 	}
 }
@@ -4854,7 +5784,7 @@ void plotLayout(plot_t *pl)
 
 	plotLegendLayout(pl);
 
-	if (pl->data_box_on != 0) {
+	if (pl->data_box_on != DATA_BOX_FREE) {
 
 		plotDataBoxLayout(pl);
 	}
@@ -4872,24 +5802,10 @@ void plotLayout(plot_t *pl)
 }
 
 static void
-plotDrawTrialFigureAll(plot_t *pl)
+plotDrawFigureTrialAll(plot_t *pl)
 {
 	int		FIGS[PLOT_FIGURE_MAX];
-	int		fN, lN, N, tTOP, resumed;
-
-	if (pl->sketch_epoch_now_ID == 0) {
-
-		for (N = 0; N < PLOT_SKETCH_MAX - 1; ++N)
-			pl->sketch[N].linked = N + 1;
-
-		pl->sketch[PLOT_SKETCH_MAX - 1].linked = -1;
-
-		pl->sketch_list_garbage = 0;
-		pl->sketch_list_todraw = -1;
-		pl->sketch_list_todraw_end = -1;
-	}
-
-	pl->sketch_epoch_now_ID += 1;
+	int		N, fN, fQ, lN, dN, tTOP;
 
 	lN = 0;
 
@@ -4905,78 +5821,62 @@ plotDrawTrialFigureAll(plot_t *pl)
 			FIGS[lN++] = fN;
 	}
 
-	tTOP = SDL_GetTicks() + 20;
-
-	if (pl->draw_interrupt == 0) {
-
-		drawClearTrial(pl->dw);
+	if (pl->draw_in_progress == 0) {
 
 		for (N = 0; N < lN; ++N) {
 
 			fN = FIGS[N];
+			dN = pl->figure[fN].data_N;
 
-			pl->figure[fN].sketched = 0;
+			pl->draw[fN].sketch = SKETCH_STARTED;
+			pl->draw[fN].rN = pl->data[dN].head_N;
+			pl->draw[fN].id_N = pl->data[dN].id_N;
+
+			pl->draw[fN].skipped = 0;
+			pl->draw[fN].line = 0;
 		}
 
-		for (N = 0; N < lN; ++N) {
-
-			fN = FIGS[N];
-
-			plotDrawTrialFigure(pl, fN, tTOP);
-
-			if (pl->draw_interrupt != 0)
-				break;
-		}
+		pl->draw_in_progress = 1;
 	}
-	else {
+
+	if (pl->draw_in_progress != 0) {
+
+		tTOP = SDL_GetTicks() + 20;
+
 		drawClearTrial(pl->dw);
 
-		for (N = 0, resumed = 0; N < lN; ++N) {
+		do {
+			fN = -1;
 
-			fN = FIGS[N];
+			for (N = 0; N < lN; ++N) {
 
-			if (pl->draw_figure_N == fN) {
+				fQ = FIGS[N];
 
-				resumed = 1;
-				break;
-			}
-		}
+				if (pl->draw[fQ].sketch != SKETCH_FINISHED) {
 
-		if (resumed != 0) {
+					if (fN < 0) {
 
-			plotDrawTrialFigure(pl, fN, tTOP);
-		}
+						fN = fQ;
+					}
+					else if (pl->draw[fQ].id_N < pl->draw[fN].id_N) {
 
-		if (		resumed == 0
-				|| pl->draw_interrupt == 0) {
-
-			for (N = 0, resumed = 0; N < lN; ++N) {
-
-				fN = FIGS[N];
-
-				if (pl->figure[fN].sketched == 0) {
-
-					plotDrawTrialFigure(pl, fN, tTOP);
-
-					resumed = 1;
-
-					if (pl->draw_interrupt != 0)
-						break;
+						fN = fQ;
+					}
 				}
 			}
 
-			if (resumed == 0) {
+			if (fN >= 0) {
 
-				pl->draw_interrupt = 0;
+				plotDrawFigureTrial(pl, fN);
+			}
+			else {
+				plotSketchGarbage(pl);
+
+				pl->draw_in_progress = 0;
+				break;
 			}
 		}
-	}
-
-	if (pl->draw_interrupt == 0) {
-
-		plotSketchGarbageCollect(pl, pl->sketch_epoch_final_ID);
-
-		pl->sketch_epoch_final_ID = pl->sketch_epoch_now_ID;
+		while (SDL_GetTicks() < tTOP);
 	}
 }
 
@@ -5004,7 +5904,7 @@ void plotDraw(plot_t *pl, SDL_Surface *surface)
 	drawPixmapAlloc(pl->dw, surface);
 
 	plotDrawPalette(pl);
-	plotDrawTrialFigureAll(pl);
+	plotDrawFigureTrialAll(pl);
 
 	drawClearCanvas(pl->dw);
 
@@ -5031,7 +5931,7 @@ void plotDraw(plot_t *pl, SDL_Surface *surface)
 
 	drawFlushCanvas(pl->dw, surface, &pl->viewport);
 
-	if (pl->data_box_on != 0) {
+	if (pl->data_box_on != DATA_BOX_FREE) {
 
 		plotDataBoxDraw(pl, surface);
 	}

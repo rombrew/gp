@@ -24,13 +24,15 @@ LFLAGS	+= -Wl,--no-undefined -ldinput8 -ldxguid \
 	   -lole32 -loleaut32 -lshell32 -lsetupapi \
 	   -lversion -luuid -static-libgcc
 
-OBJS	= async.o \
+OBJS	= lz4/lz4.o \
+	  async.o \
 	  blob_ttf.o \
 	  dirent.o \
 	  draw.o \
 	  edit.o \
 	  gp.o \
 	  lang.o \
+	  lse.o \
 	  menu.o \
 	  plot.o \
 	  read.o \

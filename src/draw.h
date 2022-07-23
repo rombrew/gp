@@ -43,7 +43,7 @@ enum {
 };
 
 enum {
-	DRAW_NONE,
+	DRAW_SOLID,
 	DRAW_4X_MSAA,
 	DRAW_8X_MSAA,
 };
@@ -60,6 +60,7 @@ clipBox_t;
 typedef struct {
 
 	int		antialiasing;
+	int		solidfont;
 	int		thickness;
 
 	int		dash_context;
@@ -67,6 +68,7 @@ typedef struct {
 	int		cached_x;
 	int		cached_min_y;
 	int		cached_max_y;
+	int		cached_ncol;
 
 	struct {
 

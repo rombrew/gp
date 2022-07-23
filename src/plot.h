@@ -23,6 +23,7 @@
 #include <SDL2/SDL_ttf.h>
 
 #include "draw.h"
+#include "lse.h"
 #include "scheme.h"
 
 #ifdef ERROR
@@ -39,17 +40,18 @@
 #define PLOT_DATASET_MAX			10
 #define PLOT_CHUNK_SIZE				16777216
 #define PLOT_CHUNK_MAX				2000
+#define PLOT_CHUNK_CACHE			8
 #define PLOT_RCACHE_SIZE			40
-#define PLOT_SCACHE_SIZE			10
+#define PLOT_SLICE_SPAN				4
 #define PLOT_AXES_MAX				9
 #define PLOT_FIGURE_MAX				8
+#define PLOT_DATA_BOX_MAX			8
+#define PLOT_POLYFIT_MAX			7
 #define PLOT_SUBTRACT				10
 #define PLOT_GROUP_MAX				40
-#define PLOT_BOX_MAX				8
 #define PLOT_MARK_MAX				50
 #define PLOT_SKETCH_CHUNK_SIZE			32768
-#define PLOT_SKETCH_MAX				1000
-#define PLOT_DATASLICE_SPAN			50000
+#define PLOT_SKETCH_MAX				800
 #define PLOT_STRING_MAX				200
 
 enum {
@@ -89,6 +91,19 @@ enum {
 	SUBTRACT_FILTER_BITMASK,
 	SUBTRACT_FILTER_LOW_PASS,
 	SUBTRACT_RESAMPLE,
+	SUBTRACT_POLYFIT
+};
+
+enum {
+	SKETCH_STARTED			= 0,
+	SKETCH_INTERRUPTED,
+	SKETCH_FINISHED
+};
+
+enum {
+	DATA_BOX_FREE			= 0,
+	DATA_BOX_SLICE,
+	DATA_BOX_POLYFIT
 };
 
 typedef double			fval_t;
@@ -105,6 +120,26 @@ typedef struct {
 
 		int		chunk_SHIFT;
 		int		chunk_MASK;
+
+		int		chunk_bSIZE;
+
+		struct {
+
+			fval_t		*raw;
+
+			int		chunk_N;
+			int		dirty;
+		}
+		cache[PLOT_CHUNK_CACHE];
+
+		int		cache_ID;
+
+		struct {
+
+			void		*raw;
+			int		length;
+		}
+		compress[PLOT_CHUNK_MAX];
 
 		fval_t		*raw[PLOT_CHUNK_MAX];
 		int		*map;
@@ -162,9 +197,19 @@ typedef struct {
 					int	column_in_X;
 					int	column_in_Y;
 
-					int	in_dN;
+					int	in_data_N;
 				}
 				resample;
+
+				struct {
+
+					int	column_X;
+					int	column_Y;
+
+					int	poly_N;
+					double	coefs[PLOT_POLYFIT_MAX + 1];
+				}
+				polyfit;
 			}
 			op;
 		}
@@ -176,26 +221,27 @@ typedef struct {
 
 	struct {
 
+		int		busy;
+
 		int		data_N;
 		int		column_N;
 
-		int		final_N;
-		int		start;
+		struct {
+
+			int		computed;
+			int		finite;
+
+			fval_t		fmin;
+			fval_t		fmax;
+		}
+		chunk[PLOT_CHUNK_MAX];
+
+		int		cached;
 
 		fval_t		fmin;
 		fval_t		fmax;
 	}
 	rcache[PLOT_RCACHE_SIZE];
-
-	struct {
-
-		int		data_N;
-		int		column_N;
-
-		int		busy;
-		int		min_N;
-	}
-	scache[PLOT_SCACHE_SIZE];
 
 	struct {
 
@@ -223,7 +269,6 @@ typedef struct {
 
 		int		busy;
 		int		hidden;
-		int		sketched;
 
 		int		drawing;
 		int		width;
@@ -264,8 +309,11 @@ typedef struct {
 
 	TTF_Font		*font;
 
+	lse_t			lsq;
+
 	int			rcache_ID;
-	int			scache_ID;
+	int			rcache_wipe_data_N;
+	int			rcache_wipe_chunk_N;
 
 	int			legend_X;
 	int			legend_Y;
@@ -277,20 +325,33 @@ typedef struct {
 	int			data_box_Y;
 	int			data_box_size_X;
 	int			data_box_N;
-	char			data_box_text[PLOT_BOX_MAX][PLOT_STRING_MAX];
+	char			data_box_text[PLOT_DATA_BOX_MAX][PLOT_STRING_MAX];
 
 	int			slice_on;
 	int			slice_range_on;
 	int			slice_axis_N;
 
-	int			draw_interrupt;
-	int			draw_figure_N;
-	int			draw_data_rN;
-	int			draw_data_id_N;
+	struct {
+
+		int		sketch;
+
+		int		rN;
+		int		id_N;
+
+		int		skipped;
+		int		line;
+
+		double		last_X;
+		double		last_Y;
+
+		int		list_self;
+	}
+	draw[PLOT_FIGURE_MAX];
+
+	int			draw_in_progress;
 
 	struct {
 
-		int		epoch_ID;
 		int		figure_N;
 
 		int		drawing;
@@ -303,11 +364,10 @@ typedef struct {
 	}
 	sketch[PLOT_SKETCH_MAX];
 
-	int			sketch_epoch_final_ID;
-	int			sketch_epoch_now_ID;
 	int			sketch_list_garbage;
 	int			sketch_list_todraw;
-	int			sketch_list_todraw_end;
+	int			sketch_list_current;
+	int			sketch_list_current_end;
 
 	int			layout_font_ttf;
 	int			layout_font_pt;
@@ -334,15 +394,17 @@ typedef struct {
 	int			hover_data_box;
 	int			hover_axis;
 
-	int			default_drawing;
-	int			default_width;
-	int			transparency_mode;
-	int			fprecision;
-
-	int			shift_on;
-
 	int			mark_on;
 	int			mark_N;
+
+	int			default_drawing;
+	int			default_width;
+
+	int			transparency_mode;
+	int			fprecision;
+	int			lz4_compress;
+
+	int			shift_on;
 }
 plot_t;
 
@@ -356,6 +418,7 @@ void plotFontDefault(plot_t *pl, int ttfnum, int ptsize, int style);
 void plotFontOpen(plot_t *pl, const char *file, int ptsize, int style);
 
 unsigned long long plotDataMemoryUsage(plot_t *pl, int dN);
+unsigned long long plotDataMemoryUncompressed(plot_t *pl, int dN);
 void plotDataAlloc(plot_t *pl, int dN, int cN, int lN);
 void plotDataResize(plot_t *pl, int dN, int lN);
 int plotDataSpaceLeft(plot_t *pl, int dN);
@@ -363,10 +426,11 @@ void plotDataGrowUp(plot_t *pl, int dN);
 void plotDataSubtract(plot_t *pl, int dN, int cN);
 void plotDataSubtractClean(plot_t *pl);
 void plotDataInsert(plot_t *pl, int dN, const fval_t *row);
-void plotDataClean(plot_t *pl);
+void plotDataClean(plot_t *pl, int dN);
 
 void plotDataRangeCacheClean(plot_t *pl, int dN);
 void plotDataRangeCacheSubtractClean(plot_t *pl);
+int plotDataRangeCacheFetch(plot_t *pl, int dN, int cN);
 
 void plotAxisLabel(plot_t *pl, int aN, const char *label);
 void plotAxisScaleManual(plot_t *pl, int aN, double min, double max);
@@ -388,6 +452,7 @@ void plotAxisRemove(plot_t *pl, int aN);
 
 void plotFigureAdd(plot_t *pl, int fN, int dN, int nX, int nY, int aX, int aY, const char *label);
 void plotFigureRemove(plot_t *pl, int fN);
+void plotFigureGarbage(plot_t *pl, int dN);
 void plotFigureMoveAxes(plot_t *pl, int fN);
 void plotFigureMakeIndividualAxes(plot_t *pl, int fN);
 void plotFigureExchange(plot_t *pl, int fN_1, int fN_2);
@@ -402,6 +467,7 @@ void plotFigureSubtractTimeUnwrap(plot_t *pl, int fN_1);
 void plotFigureSubtractScale(plot_t *pl, int fN_1, int aBUSY, double scale, double offset);
 void plotFigureSubtractFilter(plot_t *pl, int fN_1, int opSUB, double arg_1, double arg_2);
 void plotFigureSubtractSwitch(plot_t *pl, int opSUB);
+void plotFigureSubtractPolifit(plot_t *pl, int fN_1, int poly_N);
 void plotFigureClean(plot_t *pl);
 void plotSketchClean(plot_t *pl);
 
