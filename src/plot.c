@@ -4935,8 +4935,7 @@ plotDrawSketch(plot_t *pl, SDL_Surface *surface)
 	double		X, Y, last_X, last_Y, *chunk, *lend;
 	int		hN, fN, aN, bN;
 
-	int		fdrawing, fwidth;
-	int		ncolor;
+	int		fdrawing, fwidth, ncolor;
 
 	hN = pl->sketch_list_todraw;
 
@@ -5054,26 +5053,28 @@ plotDrawSketch(plot_t *pl, SDL_Surface *surface)
 static void
 plotDrawAxis(plot_t *pl, SDL_Surface *surface, int aN)
 {
-	double		fmin, fmax, tih, tis;
-	double		scale, offset, temp, emul;
-	int		fexp, tmp, lpos, tpos, tmove, tfar;
-	int		tleft, tright, txlen, tfarbefore, bN;
+	double		scale, offset, fmin, fmax, tih, tis, temp, emul;
+	int		fexp, tmp, lpos, tpos, tmove, tfar, tfarb, tleft, tright, txlen;
+
 	char		numfmt[PLOT_STRING_MAX], numbuf[PLOT_STRING_MAX];
 
 	colType_t	axCol = pl->sch->plot_hidden;
-	int		fN, ahover;
+	int		fN, bN, hover;
 
 	for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
 
 		if (pl->figure[fN].busy != 0 && pl->figure[fN].hidden == 0) {
 
-			if (pl->figure[fN].axis_X == aN
+			if (	pl->figure[fN].axis_X == aN
 				|| pl->figure[fN].axis_Y == aN) {
 
-				if (axCol != pl->sch->plot_hidden)
+				if (axCol != pl->sch->plot_hidden) {
+
 					axCol = pl->sch->plot_text;
-				else
+				}
+				else {
 					axCol = pl->sch->plot_figure[fN];
+				}
 			}
 		}
 	}
@@ -5134,17 +5135,17 @@ plotDrawAxis(plot_t *pl, SDL_Surface *surface, int aN)
 	if (pl->axis[aN].busy == AXIS_BUSY_X) {
 
 		lpos = pl->viewport.max_y + pl->layout_border + pl->axis[aN]._pos;
-		ahover = (pl->hover_axis == aN) ? 1 : 0;
+		hover = (pl->hover_axis == aN) ? 1 : 0;
 
 		if (pl->hover_figure != -1 && pl->shift_on != 0) {
 
 			fN = pl->hover_figure;
 
-			ahover = (pl->figure[fN].axis_X == aN) ? 1 : ahover;
-			ahover = (pl->figure[fN].axis_Y == aN) ? 1 : ahover;
+			hover = (pl->figure[fN].axis_X == aN) ? 1 : hover;
+			hover = (pl->figure[fN].axis_Y == aN) ? 1 : hover;
 		}
 
-		if (ahover != 0) {
+		if (hover != 0) {
 
 			tmp = pl->layout_axis_box;
 			tmp += (pl->axis[aN].compact == 0) ? pl->layout_label_box : 0;
@@ -5186,17 +5187,17 @@ plotDrawAxis(plot_t *pl, SDL_Surface *surface, int aN)
 	else if (pl->axis[aN].busy == AXIS_BUSY_Y) {
 
 		lpos = pl->viewport.min_x - pl->layout_border - pl->axis[aN]._pos;
-		ahover = (pl->hover_axis == aN) ? 1 : 0;
+		hover = (pl->hover_axis == aN) ? 1 : 0;
 
 		if (pl->hover_figure != -1 && pl->shift_on != 0) {
 
 			fN = pl->hover_figure;
 
-			ahover = (pl->figure[fN].axis_X == aN) ? 1 : ahover;
-			ahover = (pl->figure[fN].axis_Y == aN) ? 1 : ahover;
+			hover = (pl->figure[fN].axis_X == aN) ? 1 : hover;
+			hover = (pl->figure[fN].axis_Y == aN) ? 1 : hover;
 		}
 
-		if (ahover != 0) {
+		if (hover != 0) {
 
 			tmp = pl->layout_axis_box;
 			tmp += (pl->axis[aN].compact == 0) ? pl->layout_label_box : 0;
@@ -5363,7 +5364,7 @@ plotDrawAxis(plot_t *pl, SDL_Surface *surface, int aN)
 			}
 		}
 
-		tfarbefore = tfar;
+		tfarb = tfar;
 
 		if (pl->axis[aN].label[0] != 0 && pl->axis[aN].compact != 0) {
 
@@ -5395,7 +5396,7 @@ plotDrawAxis(plot_t *pl, SDL_Surface *surface, int aN)
 		if (pl->axis[aN].compact != 0) {
 
 			lpos = lpos - pl->layout_tick_tooth - pl->layout_font_height / 2;
-			tpos = tfarbefore;
+			tpos = tfarb;
 			tmp = TEXT_CENTERED_ON_X | TEXT_VERTICAL;
 		}
 		else {

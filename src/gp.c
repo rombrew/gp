@@ -2337,6 +2337,32 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 }
 
 static void
+gpScreenLayout(gp_t *gp)
+{
+	plot_t		*pl = gp->pl;
+	menu_t		*mu = gp->mu;
+	edit_t		*ed = gp->ed;
+
+	mu->screen.min_x = 0;
+	mu->screen.max_x = gp->surface->w - 1;
+	mu->screen.min_y = 0;
+	mu->screen.max_y = gp->surface->h - 1;
+
+	ed->screen.min_x = 0;
+	ed->screen.max_x = gp->surface->w - 1;
+	ed->screen.min_y = 0;
+	ed->screen.max_y = gp->surface->h - 1;
+
+	pl->screen.min_x = 0;
+	pl->screen.max_x = gp->surface->w - 1;
+	pl->screen.min_y = gp->layout_page_box;
+	pl->screen.max_y = gp->surface->h - 1;
+
+	menuLayout(mu);
+	editLayout(ed);
+}
+
+static void
 gpEventHandle(gp_t *gp)
 {
 	SDL_Event	*ev = &gp->ev;
@@ -2366,23 +2392,7 @@ gpEventHandle(gp_t *gp)
 						gp->fb->h, 32, SDL_PIXELFORMAT_XRGB8888);
 			}
 
-			mu->screen.min_x = 0;
-			mu->screen.max_x = gp->surface->w - 1;
-			mu->screen.min_y = 0;
-			mu->screen.max_y = gp->surface->h - 1;
-
-			ed->screen.min_x = 0;
-			ed->screen.max_x = gp->surface->w - 1;
-			ed->screen.min_y = 0;
-			ed->screen.max_y = gp->surface->h - 1;
-
-			pl->screen.min_x = 0;
-			pl->screen.max_x = gp->surface->w - 1;
-			pl->screen.min_y = gp->layout_page_box;
-			pl->screen.max_y = gp->surface->h - 1;
-
-			menuLayout(mu);
-			editLayout(ed);
+			gpScreenLayout(gp);
 		}
 		else if (ev->window.event == SDL_WINDOWEVENT_CLOSE) {
 
@@ -3456,8 +3466,16 @@ int main(int argn, char *argv[])
 	ed = editAlloc(dw, sch);
 	gp->ed = ed;
 
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
-	TTF_Init();
+	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) < 0) {
+
+		ERROR("SDL_Init: %s\n", SDL_GetError());
+	}
+
+	if (TTF_Init() < 0) {
+
+		ERROR("TTF_Init: %s\n", SDL_GetError());
+	}
+
 	IMG_Init(IMG_INIT_PNG);
 
 	gpFileGetPath(gp);
@@ -3556,14 +3574,31 @@ int main(int argn, char *argv[])
 	gp->window = SDL_CreateWindow("GP", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
 			rd->window_size_x, rd->window_size_y, SDL_WINDOW_RESIZABLE);
 
+	if (gp->window == NULL) {
+
+		ERROR("SDL_CreateWindow: %s\n", SDL_GetError());
+	}
+
 	SDL_SetWindowMinimumSize(gp->window, GP_MIN_SIZE_X, GP_MIN_SIZE_Y);
 	SDL_StopTextInput();
 
 	gp->fb = SDL_GetWindowSurface(gp->window);
+
+	if (gp->fb == NULL) {
+
+		ERROR("SDL_GetWindowSurface: %s\n", SDL_GetError());
+	}
+
 	gp->surface = SDL_CreateRGBSurfaceWithFormat(0, gp->fb->w,
 			gp->fb->h, 32, SDL_PIXELFORMAT_XRGB8888);
 
+	if (gp->surface == NULL) {
+
+		ERROR("SDL_CreateRGBSurfaceWithFormat: %s\n", SDL_GetError());
+	}
+
 	gpFontLayout(gp);
+	gpScreenLayout(gp);
 
 	gp->stat = GP_IDLE;
 	gp->active = 1;

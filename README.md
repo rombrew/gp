@@ -72,4 +72,8 @@ these examples.
 * [serial.gp](cfg/serial.gp)
 * [logfile.gp](cfg/logfile.gp)
 
+## TODO
+
+* Add all subtract operations to GP configuration file.
+* Allow to open multiple GP files (dataset remap).
 

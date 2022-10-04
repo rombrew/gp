@@ -1253,7 +1253,7 @@ void drawDashCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 	e = (xs - xe) * (xs - xe) + (ys - ye) * (ys - ye);
 	d = (int) sqrtf((float) e);
 
-	d = (d < 1) ? 1 : d;	/* FIXME: The line tearing appears on tight charts */
+	d = (d < 1) ? 1 : d;
 	l = d * h;
 
 	w1 = (ys - ye) * (lcb.min_x * 16 - xe + 8) - (xs - xe) * (lcb.min_y * 16 - ye + 8);
@@ -1606,7 +1606,8 @@ int drawLineTrial(draw_t *dw, clipBox_t *cb, double fxs, double fys,
 	if (clipLine(&lcb, &fxs, &fys, &fxe, &fye) < 0)
 		return 0;
 
-	h = (dw->antialiasing == DRAW_8X_MSAA) ? 2 : 1;
+	h =	  (dw->antialiasing == DRAW_4X_MSAA) ? 2
+		: (dw->antialiasing == DRAW_8X_MSAA) ? 3 : 1;
 
 	xs = (int) (fxs * (double) h + .5);
 	ys = (int) (fys * (double) h + .5);
@@ -1646,7 +1647,7 @@ int drawLineTrial(draw_t *dw, clipBox_t *cb, double fxs, double fys,
 	ye = (int) (fye * 16.);
 
 	h = (thickness > 0) ? thickness * 8 : 5;
-	h += (dw->antialiasing == DRAW_8X_MSAA) ? 12 : 0;
+	h += (dw->antialiasing != DRAW_SOLID) ? 12 : 0;
 
 	if (xs < xe) {
 
@@ -1693,8 +1694,7 @@ int drawLineTrial(draw_t *dw, clipBox_t *cb, double fxs, double fys,
 
 	fill = 0;
 
-	if (		dw->antialiasing == DRAW_SOLID
-			|| dw->antialiasing == DRAW_4X_MSAA) {
+	if (dw->antialiasing == DRAW_SOLID) {
 
 		Uint8		*trial = (Uint8 *) dw->pixmap.trial;
 
