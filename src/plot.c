@@ -841,13 +841,13 @@ plotDataResample(plot_t *pl, int dN, int cN_X, int cN_Y, int r_dN, int r_cN_X, i
 static void
 plotDataPolyfit(plot_t *pl, int dN, int cN_X, int cN_Y,
 		double scale_X, double offset_X,
-		double scale_Y, double offset_Y, int poly_N)
+		double scale_Y, double offset_Y, int poly_N1, int poly_N2)
 {
 	const fval_t	*row;
 	double		fval_X, fval_Y, fvec[LSE_FULL_MAX];
 	int		N, xN, yN, kN, rN, id_N, job;
 
-	lse_initiate(&pl->lsq, LSE_CASCADE_MAX, poly_N + 1, 1);
+	lse_initiate(&pl->lsq, LSE_CASCADE_MAX, poly_N2 - poly_N1 + 1, 1);
 
 	xN = plotDataRangeCacheFetch(pl, dN, cN_X);
 	yN = plotDataRangeCacheFetch(pl, dN, cN_Y);
@@ -917,10 +917,13 @@ plotDataPolyfit(plot_t *pl, int dN, int cN_X, int cN_Y,
 
 						fvec[0] = 1.;
 
-						for (N = 0; N < poly_N; ++N)
+						for (N = 0; N < poly_N2; ++N)
 							fvec[N + 1] = fvec[N] * fval_X;
 
-						fvec[poly_N + 1] = fval_Y;
+						for (N = 0; N < poly_N2 - poly_N1 + 1; ++N)
+							fvec[N] = fvec[N + poly_N1];
+
+						fvec[poly_N2 - poly_N1 + 1] = fval_Y;
 
 						lse_insert(&pl->lsq, fvec);
 					}
@@ -1277,10 +1280,11 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 		else if (mode == SUBTRACT_POLYFIT) {
 
 			const double	*coefs;
-			int		N, poly_N;
+			int		N, poly_N1, poly_N2;
 
 			cN_1 = pl->data[dN].sub[sN].op.polyfit.column_X;
-			poly_N = pl->data[dN].sub[sN].op.polyfit.poly_N;
+			poly_N1 = pl->data[dN].sub[sN].op.polyfit.poly_N1;
+			poly_N2 = pl->data[dN].sub[sN].op.polyfit.poly_N2;
 			coefs = pl->data[dN].sub[sN].op.polyfit.coefs;
 
 			do {
@@ -1290,10 +1294,13 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 					break;
 
 				X_1 = (cN_1 < 0) ? id_N : row[cN_1];
-				X_2 = coefs[poly_N];
+				X_2 = coefs[poly_N2 - poly_N1];
 
-				for (N = poly_N - 1; N >= 0; --N)
+				for (N = poly_N2 - poly_N1 - 1; N >= 0; --N)
 					X_2 = X_2 * X_1 + coefs[N];
+
+				for (N = poly_N1 - 1; N >= 0; --N)
+					X_2 = X_2 * X_1;
 
 				row[cN] = X_2;
 
@@ -2826,7 +2833,7 @@ plotCheckColumnLinked(plot_t *pl, int dN, int cN)
 				|| pl->data[dN].sub[sN].busy == SUBTRACT_BINARY_MULTIPLICATION
 				|| pl->data[dN].sub[sN].busy == SUBTRACT_BINARY_HYPOTENUSE) {
 
-			if (cN == pl->data[dN].sub[sN].op.binary.column_1
+			if (		cN == pl->data[dN].sub[sN].op.binary.column_1
 					|| cN == pl->data[dN].sub[sN].op.binary.column_2) {
 
 				linked = 1;
@@ -2847,6 +2854,15 @@ plotCheckColumnLinked(plot_t *pl, int dN, int cN)
 		else if (pl->data[dN].sub[sN].busy == SUBTRACT_RESAMPLE) {
 
 			if (cN == pl->data[dN].sub[sN].op.resample.column_X) {
+
+				linked = 1;
+				break;
+			}
+		}
+		else if (pl->data[dN].sub[sN].busy == SUBTRACT_POLYFIT) {
+
+			if (		cN == pl->data[dN].sub[sN].op.polyfit.column_X
+					|| cN == pl->data[dN].sub[sN].op.polyfit.column_Y) {
 
 				linked = 1;
 				break;
@@ -3779,7 +3795,69 @@ void plotFigureSubtractSwitch(plot_t *pl, int opSUB)
 	}
 }
 
-void plotFigureSubtractPolifit(plot_t *pl, int fN_1, int poly_N)
+int plotDataBoxPolyfit(plot_t *pl, int fN)
+{
+	int		N, dN, sN, poly_N1, poly_N2;
+	double		*coefs, std;
+
+	if (fN < 0 || fN >= PLOT_FIGURE_MAX) {
+
+		ERROR("Figure number is out of range\n");
+		return 0;
+	}
+
+	dN = pl->figure[fN].data_N;
+	sN = pl->figure[fN].column_Y - pl->data[dN].column_N;
+
+	if (sN < 0 || sN >= PLOT_SUBTRACT) {
+
+		return 0;
+	}
+	else if (pl->data[dN].sub[sN].busy != SUBTRACT_POLYFIT) {
+
+		return 0;
+	}
+
+	poly_N1 = pl->data[dN].sub[sN].op.polyfit.poly_N1;
+	poly_N2 = pl->data[dN].sub[sN].op.polyfit.poly_N2;
+
+	coefs = pl->data[dN].sub[sN].op.polyfit.coefs;
+	std = pl->data[dN].sub[sN].op.polyfit.std;
+
+	for (N = 0; N < PLOT_DATA_BOX_MAX; ++N) {
+
+		pl->data_box_text[N][0] = 0;
+
+		if (N == 0 && poly_N2 == 0) {
+
+			sprintf(pl->data_box_text[N], " [%i] = ", N);
+			plotDataBoxTextFmt(pl, N, coefs[N]);
+		}
+		else if (N < poly_N2 - poly_N1 + 1) {
+
+			char		sfmt[PLOT_STRING_MAX];
+
+			sprintf(sfmt, " [%%i] = %% .%iE ", pl->fprecision - 1);
+			sprintf(pl->data_box_text[N], sfmt, N + poly_N1, coefs[N]);
+		}
+		else if (N == poly_N2 - poly_N1 + 1) {
+
+			sprintf(pl->data_box_text[N], " STD = ");
+			plotDataBoxTextFmt(pl, N, std);
+		}
+	}
+
+	if (pl->data_box_on != DATA_BOX_POLYFIT) {
+
+		pl->data_box_on = DATA_BOX_POLYFIT;
+		pl->data_box_X = pl->viewport.max_x;
+		pl->data_box_Y = 0;
+	}
+
+	return 1;
+}
+
+void plotFigureSubtractPolyfit(plot_t *pl, int fN_1, int poly_N1, int poly_N2)
 {
 	int		N, fN, dN, sN, cN, aN, bN;
 	double		scale_X, offset_X, scale_Y, offset_Y;
@@ -3790,7 +3868,13 @@ void plotFigureSubtractPolifit(plot_t *pl, int fN_1, int poly_N)
 		return ;
 	}
 
-	if (poly_N < 0 || poly_N > PLOT_POLYFIT_MAX) {
+	if (poly_N1 < 0 || poly_N1 > poly_N2) {
+
+		ERROR("Polynomial base is out of range\n");
+		return ;
+	}
+
+	if (poly_N2 < 0 || poly_N2 > PLOT_POLYFIT_MAX) {
 
 		ERROR("Polynomial degree is out of range\n");
 		return ;
@@ -3838,17 +3922,20 @@ void plotFigureSubtractPolifit(plot_t *pl, int fN_1, int poly_N)
 	}
 
 	plotDataPolyfit(pl, dN, pl->figure[fN_1].column_X, pl->figure[fN_1].column_Y,
-			scale_X, offset_X, scale_Y, offset_Y, poly_N);
+			scale_X, offset_X, scale_Y, offset_Y, poly_N1, poly_N2);
 
 	pl->data[dN].sub[sN].busy = SUBTRACT_POLYFIT;
 	pl->data[dN].sub[sN].op.polyfit.column_X = pl->figure[fN_1].column_X;
 	pl->data[dN].sub[sN].op.polyfit.column_Y = pl->figure[fN_1].column_Y;
-	pl->data[dN].sub[sN].op.polyfit.poly_N = poly_N;
+	pl->data[dN].sub[sN].op.polyfit.poly_N1 = poly_N1;
+	pl->data[dN].sub[sN].op.polyfit.poly_N2 = poly_N2;
 
-	for (N = 0; N < poly_N + 1; ++N) {
+	for (N = 0; N < poly_N2 - poly_N1 + 1; ++N) {
 
 		pl->data[dN].sub[sN].op.polyfit.coefs[N] = pl->lsq.b[N];
 	}
+
+	pl->data[dN].sub[sN].op.polyfit.std = pl->lsq.e[0];
 
 	plotDataSubtract(pl, dN, sN);
 
@@ -3863,35 +3950,7 @@ void plotFigureSubtractPolifit(plot_t *pl, int fN_1, int poly_N)
 	pl->figure[fN].drawing = pl->figure[fN_1].drawing;
 	pl->figure[fN].width = pl->figure[fN_1].width;
 
-	for (N = 0; N < PLOT_DATA_BOX_MAX; ++N) {
-
-		pl->data_box_text[N][0] = 0;
-
-		if (N == 0 && poly_N == 0) {
-
-			sprintf(pl->data_box_text[N], " [%i] = ", N);
-			plotDataBoxTextFmt(pl, N, pl->lsq.b[N]);
-		}
-		else if (N < poly_N + 1) {
-
-			char		sfmt[PLOT_STRING_MAX];
-
-			sprintf(sfmt, " [%%i] = %% .%iE ", pl->fprecision - 1);
-			sprintf(pl->data_box_text[N], sfmt, N, pl->lsq.b[N]);
-		}
-		else if (N == poly_N + 1) {
-
-			sprintf(pl->data_box_text[N], " STD = ");
-			plotDataBoxTextFmt(pl, N, pl->lsq.e[0]);
-		}
-	}
-
-	if (pl->data_box_on != DATA_BOX_POLYFIT) {
-
-		pl->data_box_on = DATA_BOX_POLYFIT;
-		pl->data_box_X = pl->viewport.max_x;
-		pl->data_box_Y = 0;
-	}
+	plotDataBoxPolyfit(pl, fN);
 }
 
 void plotFigureClean(plot_t *pl)
@@ -5916,9 +5975,13 @@ void plotDraw(plot_t *pl, SDL_Surface *surface)
 		plotMarkDraw(pl, surface);
 	}
 
-	drawFlushCanvas(pl->dw, surface, &pl->viewport);
-	drawClearCanvas(pl->dw);
+	SDL_LockSurface(surface);
 
+	drawFlushCanvas(pl->dw, surface, &pl->viewport);
+
+	SDL_UnlockSurface(surface);
+
+	drawClearCanvas(pl->dw);
 	drawDashReset(pl->dw);
 
 	plotDrawAxisAll(pl, surface);
@@ -5930,7 +5993,11 @@ void plotDraw(plot_t *pl, SDL_Surface *surface)
 
 	plotLegendDraw(pl, surface);
 
+	SDL_LockSurface(surface);
+
 	drawFlushCanvas(pl->dw, surface, &pl->viewport);
+
+	SDL_UnlockSurface(surface);
 
 	if (pl->data_box_on != DATA_BOX_FREE) {
 

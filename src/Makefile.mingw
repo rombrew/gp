@@ -14,7 +14,7 @@ RM      = rm -rf
 
 CFLAGS  = -std=gnu99 -pipe -Wall -O3 -flto
 CFLAGS  += -I$(SDLDIR)/include -I$(SDLDIR)/include/SDL2
-CFLAGS  += -D_WINDOWS
+CFLAGS  += -D_WINDOWS -D__USE_MINGW_ANSI_STDIO
 
 LFLAGS	= -lm -lSDL2 -lSDL2_ttf -lSDL2_image -lfreetype -static
 LFLAGS	+= -L$(SDLDIR)/lib

@@ -10,7 +10,7 @@ We are close to stable release. The main platforms are GNU/Linux and Windows.
 ## Features
 
 * 2D plot with lines or dots from plain text or binary files.
-* Deferred fast rendering to look through a large datasets.
+* Spatial fast rendering to look through a large datasets.
 * Multiple axes are supported by design.
 * Real-time plotting from multiple asynchronous sources.
 * Simple math operations like subtraction or filtering.
@@ -70,10 +70,8 @@ You can make real-time plot from raw serial device or from logfiles. Check
 these examples.
 
 * [serial.gp](cfg/serial.gp)
-* [logfile.gp](cfg/logfile.gp)
 
 ## TODO
 
 * Add all subtract operations to GP configuration file.
-* Allow to open multiple GP files (dataset remap).
 

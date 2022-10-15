@@ -115,12 +115,18 @@ page_t;
 typedef struct {
 
 	char		file[READ_FILE_PATH_MAX];
+	const char	*path;
+
 	FILE		*fd;
+	const char	*in;
 
 	char		tbuf[READ_FILE_PATH_MAX];
 	int		unchar;
 	int		line_N;
 	int		newline;
+	int		fromUI;
+
+	int		dmap[PLOT_DATASET_MAX];
 }
 parse_t;
 
@@ -153,8 +159,6 @@ typedef struct {
 	int		length_N;
 
 	struct {
-
-		int		follow;
 
 		int		format;
 		int		column_N;
@@ -194,13 +198,14 @@ int readUpdate(read_t *rd);
 #ifdef _WINDOWS
 void legacy_ACP_to_UTF8(char *ustr, const char *text, int n);
 void legacy_OEM_to_UTF8(char *ustr, const char *text, int n);
-void legacy_readConfigGRM(read_t *rd, const char *confile, const char *file);
+void legacy_readConfigGRM(read_t *rd, const char *path, const char *confile, const char *file, int fromUI);
 #endif /* _WINDOWS */
 
 FILE *unified_fopen(const char *file, const char *mode);
 
-void readConfigGP(read_t *rd, const char *file);
-int readValidate(read_t *rd);
+void readConfigIN(read_t *rd, const char *config, int fromUI);
+void readConfigGP(read_t *rd, const char *file, int fromUI);
+void readConfigVerify(read_t *rd);
 
 void readMakePages(read_t *rd, int dN, int cX, int fromUI);
 void readDatasetClean(read_t *rd, int dN);

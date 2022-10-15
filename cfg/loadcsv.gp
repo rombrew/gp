@@ -24,7 +24,7 @@ defscale 0 0.05 0.0
 deflabel 0 "Time (s)"
 
 # Make pages for each column from current dataset. Value -2 means to use global
-# settings (timecol).
+# settings (timecol) when file is opened from UI.
 #
 # <1> Column number to use on X axis.
 #

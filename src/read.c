@@ -238,6 +238,78 @@ void readClean(read_t *rd)
 	free(rd);
 }
 
+static void
+ansiShort(char *tbuf, const char *text, int allowed)
+{
+	int		length;
+
+	length = strlen(text);
+
+	if (length > (allowed - 1)) {
+
+		text = utf8_skip_b(text, length - (allowed - 2));
+
+		strcpy(tbuf, "~");
+		strcat(tbuf, text);
+	}
+	else {
+		strcpy(tbuf, text);
+	}
+}
+
+static void
+filenameShort(read_t *rd, char *tbuf, const char *file, int allowed)
+{
+	const char	*eol;
+	int		length, ndir;
+
+	file = (file[0] == '.' && file[1] == '/')
+		? file + 2 : file;
+
+	if (allowed < 25 || rd->shortfilename != 0) {
+
+		eol = file + strlen(file);
+		ndir = rd->shortfilename;
+
+		do {
+			if (*eol == '/' || *eol == '\\') {
+
+				if (ndir > 1) ndir--;
+				else break;
+			}
+
+			if (file == eol)
+				break;
+
+			eol--;
+		}
+		while (1);
+	}
+	else {
+		eol = file;
+	}
+
+	length = utf8_length(eol);
+
+	if (length > (allowed - 1)) {
+
+		eol = utf8_skip(eol, length - (allowed - 1));
+
+		strcpy(tbuf, "~");
+		strcat(tbuf, eol);
+	}
+	else {
+		if (file == eol) {
+
+			strcpy(tbuf, eol);
+		}
+		else {
+			strcpy(tbuf, "~");
+			strcat(tbuf, eol);
+		}
+	}
+}
+
 #ifdef _WINDOWS
 void legacy_ACP_to_UTF8(char *ustr, const char *text, int n)
 {
@@ -279,14 +351,76 @@ legacy_fopen_from_ACP(const char *file, const char *mode)
 	return _wfopen(wfile, wmode);
 }
 
+static int
+legacy_GetFreeData(read_t *rd)
+{
+	int		N, dN = -1;
+
+	for (N = 0; N < PLOT_DATASET_MAX; ++N) {
+
+		if (		rd->data[N].format == FORMAT_NONE
+				&& rd->data[N].file[0] == 0) {
+
+			dN = N;
+			break;
+		}
+	}
+
+	return dN;
+}
+
+static int
+legacy_GetLabel(char *s, char *label[9])
+{
+	char		*lex, *cur, *eol;
+	int		N = 0;
+
+	lex = NULL;
+	cur = s;
+	eol = s;
+
+	while (*s != 0) {
+
+		if (strchr(" \t\';", *s) != NULL) {
+
+			cur = s + 1;
+		}
+		else {
+			lex = cur;
+			eol = s;
+		}
+
+		if (*s == ',' && lex != NULL) {
+
+			label[N++] = lex;
+
+			lex = NULL;
+			cur = s + 1;
+			*eol = 0;
+
+			if (N >= 9)
+				break;
+		}
+
+		++s;
+	}
+
+	if (N < 9 && lex != NULL) {
+
+		label[N++] = lex;
+	}
+
+	return N;
+}
+
 static char *
-legacy_trim(read_t *rd, char *s)
+legacy_Trim(read_t *rd, char *s)
 {
 	char		*eol;
 
 	while (*s != 0) {
 
-		if (*s != '\'' && *s != ' ')
+		if (strchr(" \t\';", *s) == NULL)
 			break;
 
 		s++;
@@ -296,7 +430,7 @@ legacy_trim(read_t *rd, char *s)
 
 		eol = s + strlen(s) - 1;
 
-		if (strchr(rd->mk_config.lend, *eol) != NULL) {
+		if (strchr("\r\n", *eol) != NULL) {
 
 			*eol = 0;
 		}
@@ -305,22 +439,46 @@ legacy_trim(read_t *rd, char *s)
 	return s;
 }
 
-void legacy_readConfigGRM(read_t *rd, const char *confile, const char *file)
+void legacy_readConfigGRM(read_t *rd, const char *path, const char *confile, const char *file, int fromUI)
 {
 	FILE		*fd;
-	char 		*sbuf = rd->data[0].buf;
 
-	int		n, cX, cY, cYm;
+	char 		pbuf[READ_FILE_PATH_MAX];
+	char 		xbuf[READ_FILE_PATH_MAX];
+	char		lbuf[PLOT_STRING_MAX];
+	char		nbuf[PLOT_STRING_MAX];
+
+	char		*tbuf, *label[9];
+	const char	*pfile, *ptext;
+
+	int		cX, cY, cYm, N;
 	double		scale, offset;
 
-	int		stub, cN, line_N;
+	int		dN, cN, pN, fN, line_N, lbN, stub;
 	float		fpN;
 
-	fd = legacy_fopen_from_ACP(file, "rb");
+	dN = legacy_GetFreeData(rd);
+
+	if (dN < 0) {
+
+		ERROR("Unable to get free dataset\n");
+		return ;
+	}
+
+	pfile = file;
+
+	if (path != NULL) {
+
+		sprintf(pbuf, "%s/%s", path, file);
+		pfile = pbuf;
+	}
+
+	fd = legacy_fopen_from_ACP(pfile, "rb");
 
 	if (fd == NULL) {
 
 		ERROR("fopen(\"%s\"): %s\n", file, strerror(errno));
+		return ;
 	}
 	else {
 		fread(&stub, 2, 1, fd);
@@ -332,7 +490,7 @@ void legacy_readConfigGRM(read_t *rd, const char *confile, const char *file)
 
 			fclose(fd);
 
-			readOpenUnified(rd, 0, cN + 1, 0, file, FORMAT_BINARY_LEGACY_V1);
+			readOpenUnified(rd, dN, cN + 1, 0, pfile, FORMAT_BINARY_LEGACY_V1);
 		}
 		else {
 			fseek(fd, 0UL, SEEK_SET);
@@ -344,144 +502,198 @@ void legacy_readConfigGRM(read_t *rd, const char *confile, const char *file)
 
 				fclose(fd);
 
-				readOpenUnified(rd, 0, cN + 1, 0, file, FORMAT_BINARY_LEGACY_V2);
+				readOpenUnified(rd, dN, cN + 1, 0, pfile, FORMAT_BINARY_LEGACY_V2);
 			}
 			else {
 				fclose(fd);
 
 				ERROR("Unable to load legacy file \"%s\"\n", file);
+				return ;
 			}
 		}
 	}
 
-	fd = legacy_fopen_from_ACP(confile, "r");
+	pfile = confile;
+
+	if (path != NULL) {
+
+		sprintf(pbuf, "%s/%s", path, confile);
+		pfile = pbuf;
+	}
+
+	fd = legacy_fopen_from_ACP(pfile, "r");
 
 	if (fd == NULL) {
 
 		ERROR("fopen(\"%s\"): %s\n", confile, strerror(errno));
+		return ;
 	}
-	else if (rd->data[0].file[0] != 0) {
-
+	else {
+		tbuf = rd->data[dN].buf;
 		line_N = 0;
 
-		rd->page_N = 0;
+		pN = rd->page_N;
 
-		while (fgets(sbuf, sizeof(rd->data[0].buf), fd) != NULL) {
+		while (fgets(tbuf, sizeof(rd->data[0].buf), fd) != NULL) {
 
 			line_N++;
 
-			if (strncmp(sbuf, "LI", 2) == 0) {
+			if (strncmp(tbuf, "LI", 2) == 0) {
 
-				fgets(sbuf, sizeof(rd->data[0].buf), fd);
-
-				line_N++;
-
-				legacy_OEM_to_UTF8(sbuf, sbuf, sizeof(rd->data[0].buf));
-				sbuf[READ_TOKEN_MAX] = 0;
-
-				rd->figure_N = -1;
-				rd->page_N++;
-
-				rd->page[rd->page_N].busy = 1;
-				strcpy(rd->page[rd->page_N].title, legacy_trim(rd, sbuf));
-
-				fgets(sbuf, sizeof(rd->data[0].buf), fd);
+				fgets(tbuf, sizeof(rd->data[0].buf), fd);
 
 				line_N++;
 
-				n = sscanf(sbuf, "%i", &cX);
+				legacy_OEM_to_UTF8(tbuf, tbuf, sizeof(rd->data[0].buf));
 
-				if (n != 1) {
+				if (pN < 0) {
+
+					pN = 1;
+				}
+
+				while (rd->page[pN].busy != 0) {
+
+					pN++;
+
+					if (pN >= READ_PAGE_MAX)
+						break;
+				}
+
+				if (pN >= READ_PAGE_MAX)
+					break;
+
+				rd->page[pN].busy = 1;
+
+				strcpy(lbuf, legacy_Trim(rd, tbuf));
+				ptext = lbuf;
+
+				if (fromUI != 0) {
+
+					filenameShort(rd, nbuf, pfile, 95);
+
+					sprintf(xbuf, "%s: %.95s", nbuf, lbuf);
+					ptext = xbuf;
+				}
+
+				ansiShort(rd->page[pN].title, ptext, PLOT_STRING_MAX);
+
+				lbN = legacy_GetLabel(lbuf, label);
+
+				fgets(tbuf, sizeof(rd->data[0].buf), fd);
+
+				line_N++;
+
+				N = sscanf(tbuf, "%i", &cX);
+
+				if (N != 1) {
 
 					cX = 0;
 				}
 
-				if (cX < -1 || cX >= rd->pl->data[0].column_N) {
+				if (cX < -1 || cX >= rd->pl->data[dN].column_N) {
 
 					ERROR("%s:%i: page %i column number %i is out of range\n",
-						confile, line_N, rd->page_N, cX);
+						confile, line_N, pN, cX);
 					cX = 0;
 				}
 
-				fgets(sbuf, sizeof(rd->data[0].buf), fd);
+				fgets(tbuf, sizeof(rd->data[0].buf), fd);
 
 				line_N++;
 
-				legacy_OEM_to_UTF8(sbuf, sbuf, sizeof(rd->data[0].buf));
-				sbuf[READ_TOKEN_MAX] = 0;
+				legacy_OEM_to_UTF8(tbuf, tbuf, sizeof(rd->data[0].buf));
+				sprintf(rd->page[pN].ax[0].label, "%.20s", legacy_Trim(rd, tbuf));
 
-				strcpy(rd->page[rd->page_N].ax[0].label, legacy_trim(rd, sbuf));
+				fN = 0;
 
 				do {
-					fgets(sbuf, sizeof(rd->data[0].buf), fd);
+					fgets(tbuf, sizeof(rd->data[0].buf), fd);
 
 					line_N++;
 
-					if (strlen(sbuf) < 5) {
-
+					if (strlen(tbuf) < 5)
 						break;
-					}
 
-					n = sscanf(sbuf, "%*s %i %i %le %le",
-							&cY, &cYm, &scale, &offset);
+					if (strstr(tbuf, "'END") != NULL)
+						break;
 
-					if (n != 4) {
+					N = sscanf(tbuf, "%i %i %i %le %le",
+							&stub, &cY, &cYm, &scale, &offset);
+
+					if (N != 5) {
 
 						ERROR("%s:%i: page %i figure %i invalid format\n",
-							confile, line_N, rd->page_N, rd->figure_N + 1);
+							confile, line_N, pN, fN);
 						break;
 					}
 
-					if (cY < -1 || cY >= rd->pl->data[0].column_N) {
+					if (cY < -1 || cY >= rd->pl->data[dN].column_N) {
 
 						ERROR("%s:%i: page %i column number %i is out of range\n",
-							confile, line_N, rd->page_N, cY);
+							confile, line_N, pN, cY);
 						break;
 					}
 
-					rd->figure_N++;
+					if (fN < PLOT_FIGURE_MAX) {
 
-					rd->page[rd->page_N].fig[rd->figure_N].busy = 1;
-					rd->page[rd->page_N].fig[rd->figure_N].drawing = -1;
-					rd->page[rd->page_N].fig[rd->figure_N].dN = 0;
-					rd->page[rd->page_N].fig[rd->figure_N].cX = cX;
-					rd->page[rd->page_N].fig[rd->figure_N].cY = cY;
-					rd->page[rd->page_N].fig[rd->figure_N].aX = 0;
-					rd->page[rd->page_N].fig[rd->figure_N].aY = 1;
+						rd->page[pN].fig[fN].busy = 1;
+						rd->page[pN].fig[fN].drawing = -1;
+						rd->page[pN].fig[fN].dN = dN;
+						rd->page[pN].fig[fN].cX = cX;
+						rd->page[pN].fig[fN].cY = cY;
+						rd->page[pN].fig[fN].aX = 0;
+						rd->page[pN].fig[fN].aY = 1;
 
-					sprintf(rd->page[rd->page_N].fig[rd->figure_N].label,
-							"fig.%i.%i", rd->figure_N, cY);
+						sprintf(rd->page[pN].fig[fN].label, "fig.%i.%i", fN, cY);
 
-					if (scale != 1. || offset != 0.) {
+						if (scale != 1. || offset != 0.) {
 
-						rd->page[rd->page_N].fig[rd->figure_N].ops[1].busy = SUBTRACT_SCALE;
-						rd->page[rd->page_N].fig[rd->figure_N].ops[1].scale = scale;
-						rd->page[rd->page_N].fig[rd->figure_N].ops[1].offset = offset;
+							rd->page[pN].fig[fN].ops[1].busy = SUBTRACT_SCALE;
+							rd->page[pN].fig[fN].ops[1].scale = scale;
+							rd->page[pN].fig[fN].ops[1].offset = offset;
+						}
+
+						if (cY != cYm) {
+
+							rd->page[pN].fig[fN].ops[1].busy = SUBTRACT_BINARY_SUBTRACTION;
+							rd->page[pN].fig[fN].ops[1].column_2 = cYm;
+							rd->page[pN].fig[fN].ops[1].scale = scale;
+							rd->page[pN].fig[fN].ops[1].offset = offset;
+						}
+
+						fN++;
 					}
-
-					if (cY != cYm) {
-
-						rd->page[rd->page_N].fig[rd->figure_N].ops[1].busy = SUBTRACT_BINARY_SUBTRACTION;
-						rd->page[rd->page_N].fig[rd->figure_N].ops[1].column_2 = cYm;
-						rd->page[rd->page_N].fig[rd->figure_N].ops[1].scale = scale;
-						rd->page[rd->page_N].fig[rd->figure_N].ops[1].offset = offset;
-					}
-
-					if (strstr(sbuf, "'END") != NULL)
-						break;
-
-					if (rd->figure_N >= PLOT_FIGURE_MAX) {
-
+					else {
 						ERROR("%s:%i: too many figures on page %i\n",
-							confile, line_N, rd->page_N);
+							confile, line_N, pN);
 						break;
 					}
 				}
 				while (1);
+
+				if (lbN >= fN) {
+
+					for (N = 0; N < fN; ++N) {
+
+						sprintf(rd->page[pN].fig[N].label, "%.75s.%i",
+								label[N], rd->page[pN].fig[N].cY);
+					}
+
+					if (lbN - 1 >= fN) {
+
+						sprintf(rd->page[pN].ax[1].label, "%.20s", label[lbN - 1]);
+					}
+				}
 			}
 		}
 
 		fclose(fd);
+
+		if (fromUI == 0) {
+
+			rd->page_N = pN;
+			rd->figure_N = -1;
+		}
 	}
 }
 #endif /* _WINDOWS */
@@ -716,7 +928,7 @@ TEXT_GetCN(read_t *rd, int dN, FILE *fd, fval_t *rbuf)
 	fixed_N = 0;
 	total_N = 0;
 
-	timeout = (rd->data[dN].follow != 0) ? rd->timeout : 0;
+	timeout = 0;
 
 	do {
 		r = follow_fgets(rd->data[dN].buf, sizeof(rd->data[0].buf), fd, timeout);
@@ -806,13 +1018,13 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 		readClose(rd, dN);
 	}
 
-	if (file != NULL) {
-
-		fd = unified_fopen(file, "rb");
-	}
-	else if (fmt == FORMAT_PLAIN_TEXT) {
+	if (		strcmp(file, "STDIN") == 0
+			&& fmt == FORMAT_PLAIN_TEXT) {
 
 		fd = stdin;
+	}
+	else {
+		fd = unified_fopen(file, "rb");
 	}
 
 	if (fd == NULL) {
@@ -820,14 +1032,9 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 		ERROR("fopen(\"%s\"): %s\n", file, strerror(errno));
 	}
 	else {
-		if (file != NULL) {
+		if (fd != stdin) {
 
 			sF = FILE_GetSize(file);
-		}
-
-		if (rd->data[dN].follow != 0 && sF != 0) {
-
-			fseek(fd, 0UL, SEEK_END);
 		}
 
 		rd->data[dN].length_N = lN;
@@ -838,8 +1045,7 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 
 			if (cN < 1) {
 
-				ERROR("No correct data in file \"%s\"\n",
-						(file != NULL) ? file : "STDIN");
+				ERROR("No correct data in file \"%s\"\n", file);
 				fclose(fd);
 				return ;
 			}
@@ -897,7 +1103,7 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 		rd->data[dN].format = fmt;
 		rd->data[dN].column_N = cN;
 
-		strcpy(rd->data[dN].file, (file != NULL) ? file : "STDIN");
+		strcpy(rd->data[dN].file, file);
 
 		rd->data[dN].fd = fd;
 		rd->data[dN].afd = async_open(fd, rd->preload, rd->chunk, rd->timeout);
@@ -1162,8 +1368,19 @@ config_getc(parse_t *pa)
 
 	if (pa->unchar < 0) {
 
-		r = fgetc(pa->fd);
-		r = (r == EOF) ? -1 : r;
+		if (pa->fd != NULL) {
+
+			r = fgetc(pa->fd);
+			r = (r == EOF) ? -1 : r;
+		}
+		else if (pa->in != NULL) {
+
+			r = *pa->in++;
+			r = (r == 0) ? -1 : r;
+		}
+		else {
+			r = -1;
+		}
 	}
 	else {
 		r = pa->unchar;
@@ -1182,7 +1399,7 @@ config_ungetc(parse_t *pa, int c)
 }
 
 static int
-configLexerFSM(read_t *rd, parse_t *pa)
+configToken(read_t *rd, parse_t *pa)
 {
 	char		*p = pa->tbuf;
 	int		c, n = 0, r = 0;
@@ -1244,25 +1461,45 @@ configLexerFSM(read_t *rd, parse_t *pa)
 }
 
 static void
+configDataMap(read_t *rd, parse_t *pa)
+{
+	int		dN, N = 0;
+
+	for (dN = 0; dN < PLOT_DATASET_MAX; ++dN)
+		pa->dmap[dN] = -1;
+
+	for (dN = 0; dN < PLOT_DATASET_MAX; ++dN) {
+
+		if (		rd->data[dN].format == FORMAT_NONE
+				&& rd->data[dN].file[0] == 0) {
+
+			pa->dmap[N++] = dN;
+		}
+	}
+}
+
+static void
 configParseFSM(read_t *rd, parse_t *pa)
 {
 	char		msg_tbuf[READ_FILE_PATH_MAX];
-	char		*tbuf = pa->tbuf;
+	char 		lpath[READ_FILE_PATH_MAX];
+	char 		lname[READ_FILE_PATH_MAX];
+
+	char		*lbuf, *tbuf = pa->tbuf;
 	int		r, failed;
 
 	double		argd[2];
 	int		argi[4];
 
-	int		flag_follow;
-	int		flag_stub;
-
 	FILE		*fd;
 	parse_t		rpa;
+
+	configDataMap(rd, pa);
 
 	failed = 0;
 
 	do {
-		r = configLexerFSM(rd, pa);
+		r = configToken(rd, pa);
 
 		if (r == -1) break;
 		else if (r == 1) {
@@ -1279,29 +1516,40 @@ configParseFSM(read_t *rd, parse_t *pa)
 			if (tbuf[0] == '#') {
 
 				failed = 0;
-				while (configLexerFSM(rd, pa) == 0) ;
+				while (configToken(rd, pa) == 0) ;
 			}
 			else if (strcmp(tbuf, "include") == 0) {
 
-				r = configLexerFSM(rd, pa);
+				r = configToken(rd, pa);
 
 				if (r == 0) {
 
-					fd = unified_fopen(tbuf, "r");
+					lbuf = tbuf;
+
+					if (pa->path != NULL && tbuf[0] != '/') {
+
+						sprintf(lpath, "%s/%s", pa->path, tbuf);
+						lbuf = lpath;
+					}
+
+					fd = unified_fopen(lbuf, "r");
 
 					if (fd == NULL) {
 
-						ERROR("fopen(\"%s\"): %s\n",
-								tbuf, strerror(errno));
+						ERROR("fopen(\"%s\"): %s\n", tbuf, strerror(errno));
 						failed = 1;
 					}
 					else {
 						strcpy(rpa.file, tbuf);
 
+						rpa.path = pa->path;
 						rpa.fd = fd;
+						rpa.in = NULL;
+
 						rpa.unchar = -1;
 						rpa.line_N = 1;
 						rpa.newline = 1;
+						rpa.fromUI = pa->fromUI;
 
 						configParseFSM(rd, &rpa);
 
@@ -1317,12 +1565,12 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0) {
 
@@ -1375,7 +1623,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1392,7 +1640,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1413,7 +1661,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1434,7 +1682,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1455,14 +1703,12 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
 
 					if (argi[0] > 0) {
-
-						/* FIXME: ignore legacy */
 
 						failed = 0;
 					}
@@ -1474,7 +1720,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1495,7 +1741,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0) {
 
@@ -1510,12 +1756,12 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[1], tbuf) != NULL) ;
 					else break;
@@ -1537,7 +1783,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1558,7 +1804,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1579,7 +1825,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1600,7 +1846,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1621,7 +1867,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1642,7 +1888,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1663,7 +1909,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1684,7 +1930,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1705,7 +1951,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0) {
 
@@ -1720,7 +1966,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0) {
 
@@ -1736,12 +1982,18 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
 
 					if (rd->bind_N != -1) {
+
+						if (pa->fromUI != 0) {
+
+							failed = 0;
+							break;
+						}
 
 						sprintf(msg_tbuf, "unable if dataset was already opened");
 						break;
@@ -1758,15 +2010,14 @@ configParseFSM(read_t *rd, parse_t *pa)
 				}
 				while (0);
 			}
-			else if (strcmp(tbuf, "load") == 0 || strcmp(tbuf, "follow") == 0) {
+			else if (strcmp(tbuf, "load") == 0) {
+
+				int		flag_stub = 0;
 
 				failed = 1;
 
-				flag_follow = (strcmp(tbuf, "follow") == 0) ? 1 : 0;
-				flag_stub = 0;
-
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1777,12 +2028,12 @@ configParseFSM(read_t *rd, parse_t *pa)
 						break;
 					}
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[1], tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0) {
 
@@ -1808,7 +2059,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 					if (		argi[2] == FORMAT_BINARY_FLOAT
 							|| argi[2] == FORMAT_BINARY_DOUBLE) {
 
-						r = configLexerFSM(rd, pa);
+						r = configToken(rd, pa);
 
 						if (r == 0 && stoi(&rd->mk_config, &argi[3], tbuf) != NULL) ;
 						else break;
@@ -1816,18 +2067,34 @@ configParseFSM(read_t *rd, parse_t *pa)
 						flag_stub = 1;
 					}
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0) {
 
-						rd->data[argi[0]].follow = flag_follow;
+						int		dN_remap;
 
-						readOpenUnified(rd, argi[0], argi[3], argi[1], tbuf, argi[2]);
+						dN_remap = pa->dmap[argi[0]];
 
-						if (		rd->data[argi[0]].fd == NULL
+						if (dN_remap < 0) {
+
+							sprintf(msg_tbuf, "no free dataset to remap %i", argi[0]);
+							break;
+						}
+
+						lbuf = tbuf;
+
+						if (pa->path != NULL && tbuf[0] != '/') {
+
+							sprintf(lpath, "%s/%s", pa->path, tbuf);
+							lbuf = lpath;
+						}
+
+						readOpenUnified(rd, dN_remap, argi[3], argi[1], lbuf, argi[2]);
+
+						if (		rd->data[dN_remap].fd == NULL
 								&& flag_stub != 0) {
 
-							readOpenStub(rd, argi[0], argi[3], argi[1], tbuf, argi[2]);
+							readOpenStub(rd, dN_remap, argi[3], argi[1], lbuf, argi[2]);
 						}
 
 						failed = 0;
@@ -1841,17 +2108,22 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
 
 					if (argi[0] >= 0 && argi[0] < PLOT_DATASET_MAX) {
 
-						if (rd->data[argi[0]].format != FORMAT_NONE) {
+						int		dN_remap;
+
+						dN_remap = pa->dmap[argi[0]];
+
+						if (		dN_remap >= 0 &&
+								rd->data[dN_remap].format != FORMAT_NONE) {
 
 							failed = 0;
-							rd->bind_N = argi[0];
+							rd->bind_N = dN_remap;
 						}
 						else {
 							sprintf(msg_tbuf, "no dataset has a number %i", argi[0]);
@@ -1868,7 +2140,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1888,7 +2160,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 					failed = 0;
 
 					do {
-						r = configLexerFSM(rd, pa);
+						r = configToken(rd, pa);
 
 						if (r != 0)
 							break;
@@ -1919,12 +2191,12 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (argi[0] >= 0 && argi[0] < PLOT_GROUP_MAX) {
 
@@ -1944,7 +2216,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -1967,17 +2239,17 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stod(&rd->mk_config, argd + 0, tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stod(&rd->mk_config, argd + 1, tbuf) != NULL) ;
 					else break;
@@ -2000,24 +2272,51 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
+
+					if (rd->bind_N == -1) {
+
+						sprintf(msg_tbuf, "no dataset selected");
+						break;
+					}
 
 					if (r == 0) {
 
 						failed = 0;
 
-						if (rd->page_N == -1) {
+						if (rd->page_N < 0) {
 
 							rd->page_N = 1;
 						}
-						else {
+
+						while (rd->page[rd->page_N].busy != 0) {
+
 							rd->page_N++;
+
+							if (rd->page_N >= READ_PAGE_MAX)
+								break;
+						}
+
+						if (rd->page_N >= READ_PAGE_MAX) {
+
+							sprintf(msg_tbuf, "no free pages to remap");
+							break;
 						}
 
 						rd->figure_N = -1;
 						rd->page[rd->page_N].busy = 1;
 
-						strcpy(rd->page[rd->page_N].title, tbuf);
+						lbuf = tbuf;
+
+						if (pa->fromUI != 0) {
+
+							filenameShort(rd, lpath, pa->file, 95);
+
+							sprintf(lname, "%s: %.95s", lpath, tbuf);
+							lbuf = lname;
+						}
+
+						ansiShort(rd->page[rd->page_N].title, lbuf, PLOT_STRING_MAX);
 					}
 				}
 				while (0);
@@ -2027,7 +2326,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
@@ -2041,7 +2340,8 @@ configParseFSM(read_t *rd, parse_t *pa)
 					if (argi[0] >= -2 && argi[0] < rd->pl->data[rd->bind_N].column_N) {
 
 						failed = 0;
-						readMakePages(rd, rd->bind_N, argi[0], 0);
+
+						readMakePages(rd, rd->bind_N, argi[0], pa->fromUI);
 					}
 					else {
 						sprintf(msg_tbuf, "column number %i is out of range", argi[0]);
@@ -2055,12 +2355,12 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (rd->page_N == -1) {
 
@@ -2087,22 +2387,22 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[1], tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stod(&rd->mk_config, argd + 0, tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stod(&rd->mk_config, argd + 1, tbuf) != NULL) ;
 					else break;
@@ -2133,17 +2433,17 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[1], tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (rd->page_N == -1) {
 
@@ -2193,12 +2493,12 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[1], tbuf) != NULL) ;
 					else break;
@@ -2227,17 +2527,17 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stod(&rd->mk_config, &argd[0], tbuf) != NULL) ;
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stod(&rd->mk_config, &argd[1], tbuf) != NULL) ;
 					else break;
@@ -2266,7 +2566,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 				failed = 1;
 
 				do {
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0) {
 
@@ -2283,7 +2583,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 					}
 					else break;
 
-					r = configLexerFSM(rd, pa);
+					r = configToken(rd, pa);
 
 					if (r == 0 && stoi(&rd->mk_config, &argi[1], tbuf) != NULL) ;
 					else break;
@@ -2329,10 +2629,68 @@ configParseFSM(read_t *rd, parse_t *pa)
 	while (1);
 }
 
-void readConfigGP(read_t *rd, const char *file)
+void readConfigIN(read_t *rd, const char *config, int fromUI)
 {
+	parse_t		pa;
+	int		pN;
+
+	strcpy(pa.file, "<inline>");
+
+	pa.path = NULL;
+	pa.fd = NULL;
+	pa.in = config;
+
+	pa.unchar = -1;
+	pa.line_N = 1;
+	pa.newline = 1;
+	pa.fromUI = fromUI;
+
+	pN = rd->page_N;
+
+	configParseFSM(rd, &pa);
+
+	if (fromUI != 0) {
+
+		rd->page_N = pN;
+	}
+}
+
+static char *
+pathDirName(char *path)
+{
+	char		*eol;
+
+	eol = path + strlen(path) - 1;
+
+	do {
+		if (*eol == '/' || *eol == '\\')
+			break;
+
+		if (path == eol)
+			break;
+
+		eol--;
+	}
+	while (1);
+
+	if (eol != path) {
+
+		*eol = 0;
+	}
+	else {
+		path = NULL;
+	}
+
+	return path;
+}
+
+void readConfigGP(read_t *rd, const char *file, int fromUI)
+{
+	char 		lpath[READ_FILE_PATH_MAX];
+
 	FILE		*fd;
 	parse_t		pa;
+	int		pN;
 
 	fd = unified_fopen(file, "r");
 
@@ -2342,114 +2700,38 @@ void readConfigGP(read_t *rd, const char *file)
 	}
 	else {
 		strcpy(pa.file, file);
+		strcpy(lpath, file);
 
+		pa.path = pathDirName(lpath);
 		pa.fd = fd;
+		pa.in = NULL;
+
 		pa.unchar = -1;
 		pa.line_N = 1;
 		pa.newline = 1;
+		pa.fromUI = fromUI;
+
+		pN = rd->page_N;
 
 		configParseFSM(rd, &pa);
+
+		if (fromUI != 0) {
+
+			rd->page_N = pN;
+		}
 
 		fclose(fd);
 	}
 }
 
-int readValidate(read_t *rd)
+void readConfigVerify(read_t *rd)
 {
-	int		invalid = 0;
-
 	if (rd->pl->font == NULL) {
 
-		plotFontDefault(rd->pl, TTF_ID_ROBOTO_MONO_NORMAL, 24, TTF_STYLE_NORMAL);
-	}
-
-	if (rd->page_N == -1) {
-
-		ERROR("No pages specified\n");
-		invalid = 1;
-	}
-
-	if (rd->bind_N == -1) {
-
-		ERROR("No datasets specified\n");
-		invalid = 1;
+		plotFontDefault(rd->pl, TTF_ID_ROBOTO_MONO_NORMAL, 26, TTF_STYLE_NORMAL);
 	}
 
 	rd->page_N = -1;
-
-	return invalid;
-}
-
-static void
-ansiShort(char *tbuf, const char *text, int allowed)
-{
-	int		length;
-
-	length = strlen(text);
-
-	if (length > (allowed - 1)) {
-
-		text = utf8_skip_b(text, length - (allowed - 2));
-
-		strcpy(tbuf, "~");
-		strcat(tbuf, text);
-	}
-	else {
-		strcpy(tbuf, text);
-	}
-}
-
-static void
-filenameShort(read_t *rd, char *tbuf, const char *file, int allowed)
-{
-	const char	*eol;
-	int		length, ndir;
-
-	file = (file[0] == '.' && file[1] == '/')
-		? file + 2 : file;
-
-	if (allowed < 25 || rd->shortfilename != 0) {
-
-		eol = file + strlen(file);
-		ndir = rd->shortfilename;
-
-		do {
-			if (*eol == '/' || *eol == '\\') {
-
-				if (ndir > 1) ndir--;
-				else break;
-			}
-
-			if (file == eol)
-				break;
-
-			eol--;
-		}
-		while (1);
-	}
-	else {
-		eol = file;
-	}
-
-	length = utf8_length(eol);
-
-	if (length > (allowed - 1)) {
-
-		eol = utf8_skip(eol, length - (allowed - 1));
-
-		strcpy(tbuf, "~");
-		strcat(tbuf, eol);
-	}
-	else {
-		if (file == eol) {
-
-			strcpy(tbuf, eol);
-		}
-		else {
-			strcpy(tbuf, "~");
-			strcat(tbuf, eol);
-		}
-	}
 }
 
 static void
@@ -2498,7 +2780,7 @@ void readMakePages(read_t *rd, int dN, int cX, int fromUI)
 
 	for (N = 0; N < rd->data[dN].column_N; ++N) {
 
-		if (pN == -1) {
+		if (pN < 0) {
 
 			pN = 1;
 		}
@@ -2516,9 +2798,9 @@ void readMakePages(read_t *rd, int dN, int cX, int fromUI)
 
 		rd->page[pN].busy = 2;
 
-		filenameShort(rd, tbuf, rd->data[dN].file, 200);
+		filenameShort(rd, tbuf, rd->data[dN].file, 95);
 
-		sprintf(sbuf, "%s: [%2i] %.75s", tbuf, N, rd->data[dN].label[N]);
+		sprintf(sbuf, "%s: [%2i] %.95s", tbuf, N, rd->data[dN].label[N]);
 		ansiShort(rd->page[pN].title, sbuf, PLOT_STRING_MAX);
 
 		rd->page[pN].fig[0].busy = 1;
@@ -2531,7 +2813,7 @@ void readMakePages(read_t *rd, int dN, int cX, int fromUI)
 
 		filenameShort(rd, tbuf, rd->data[dN].file, 20);
 
-		sprintf(sbuf, "%s: [%2i] %.75s", tbuf, N, rd->data[dN].label[N]);
+		sprintf(sbuf, "%s: [%2i] %.95s", tbuf, N, rd->data[dN].label[N]);
 		ansiShort(rd->page[pN].fig[0].label, sbuf, PLOT_STRING_MAX);
 
 		labelGetUnit(tbuf, rd->data[dN].label[N], 20);

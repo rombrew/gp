@@ -206,8 +206,11 @@ typedef struct {
 					int	column_X;
 					int	column_Y;
 
-					int	poly_N;
+					int	poly_N1;
+					int	poly_N2;
+
 					double	coefs[PLOT_POLYFIT_MAX + 1];
+					double	std;
 				}
 				polyfit;
 			}
@@ -467,7 +470,8 @@ void plotFigureSubtractTimeUnwrap(plot_t *pl, int fN_1);
 void plotFigureSubtractScale(plot_t *pl, int fN_1, int aBUSY, double scale, double offset);
 void plotFigureSubtractFilter(plot_t *pl, int fN_1, int opSUB, double arg_1, double arg_2);
 void plotFigureSubtractSwitch(plot_t *pl, int opSUB);
-void plotFigureSubtractPolifit(plot_t *pl, int fN_1, int poly_N);
+int plotDataBoxPolyfit(plot_t *pl, int fN);
+void plotFigureSubtractPolyfit(plot_t *pl, int fN_1, int poly_N1, int poly_N2);
 void plotFigureClean(plot_t *pl);
 void plotSketchClean(plot_t *pl);
 

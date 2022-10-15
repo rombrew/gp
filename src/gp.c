@@ -31,6 +31,7 @@
 #include <windows.h>
 #endif /* _WINDOWS */
 
+#include "gp.h"
 #include "dirent.h"
 #include "draw.h"
 #include "edit.h"
@@ -45,7 +46,7 @@
 
 #define GP_FILE_DIR_MAX			4000
 
-typedef struct {
+struct gp_struct {
 
 	scheme_t	*sch;
 	lang_t		*la;
@@ -56,11 +57,11 @@ typedef struct {
 	menu_t		*mu;
 	edit_t		*ed;
 
-	SDL_Event	ev;
-
 	SDL_Window	*window;
 	SDL_Surface	*fb;
 	SDL_Surface	*surface;
+
+	int		window_ID;
 
 	char		sbuf[4][READ_FILE_PATH_MAX];
 
@@ -72,6 +73,7 @@ typedef struct {
 
 	int		active;
 	int		unfinished;
+	int		drawn;
 
 	int		clock;
 	int		idled;
@@ -118,8 +120,7 @@ typedef struct {
 	int		current_dir_ok;
 
 	char		la_menu[GP_FILE_DIR_MAX * PLOT_STRING_MAX + 1];
-}
-gp_t;
+};
 
 enum {
 	GP_IDLE			= 0,
@@ -133,6 +134,7 @@ enum {
 int utf8_length(const char *s);
 const char *utf8_skip(const char *s, int n);
 
+#ifndef _EMBED_GP
 static void
 gpMakeHello(gp_t *gp)
 {
@@ -207,6 +209,7 @@ gpMakeHello(gp_t *gp)
 	gp->rd->page[pN].fig[0].aX = 0;
 	gp->rd->page[pN].fig[0].aY = 1;
 }
+#endif /* _EMBED_GP */
 
 static void
 gpFileGetPath(gp_t *gp)
@@ -442,6 +445,138 @@ gpMakePageMenu(gp_t *gp)
 }
 
 static int
+gpFileIsGP(gp_t *gp, const char *file)
+{
+	int		rc = 0;
+
+	if (strlen(file) > 3) {
+
+		file += strlen(file) - 3;
+
+		rc = (strcmp(file, ".gp") == 0 || strcmp(file, ".GP") == 0) ? 1 : 0;
+	}
+
+	return rc;
+}
+
+#ifdef _WINDOWS
+static int
+legacy_FileIsBAT(gp_t *gp, const char *file)
+{
+	int		rc = 0;
+
+	if (strlen(file) > 4) {
+
+		file += strlen(file) - 4;
+
+		rc = (strcmp(file, ".bat") == 0 || strcmp(file, ".BAT") == 0) ? 1 : 0;
+	}
+
+	return rc;
+}
+
+static char *
+legacy_DirName(char *path)
+{
+	char		*eol;
+
+	eol = path + strlen(path) - 1;
+
+	do {
+		if (*eol == '/' || *eol == '\\')
+			break;
+
+		if (path == eol)
+			break;
+
+		eol--;
+	}
+	while (1);
+
+	if (eol != path) {
+
+		*eol = 0;
+	}
+	else {
+		path = NULL;
+	}
+
+	return path;
+}
+
+static void
+legacy_FileOpenBAT(gp_t *gp, const char *file, int fromUI)
+{
+	FILE		*fd;
+	char		*s, *path, *argv[2];
+	int		line_N = 0;
+
+	fd = unified_fopen(file, "r");
+
+	if (fd == NULL) {
+
+		ERROR("fopen(\"%s\"): %s\n", file, strerror(errno));
+	}
+	else {
+		do {
+			if ((s = fgets(gp->sbuf[0], sizeof(gp->sbuf[0]), fd)) == NULL)
+				break;
+
+			s = strtok(s, " \t");
+
+			if (s != NULL && (strcmp(s, "grm") == 0 || strcmp(s, "GRM") == 0)) {
+
+				if ((argv[0] = strtok(NULL, " \t")) != NULL) {
+
+					if ((argv[1] = strtok(NULL, " \t\r\n")) != NULL) {
+
+						strcpy(gp->sbuf[1], file);
+						path = legacy_DirName(gp->sbuf[1]);
+
+						legacy_readConfigGRM(gp->rd, path, argv[0], argv[1], fromUI);
+						break;
+					}
+				}
+			}
+
+			line_N++;
+
+			if (line_N >= 10)
+				break;
+		}
+		while (1);
+
+		fclose(fd);
+	}
+}
+#endif /* _WINDOWS */
+
+static void
+gpUnifiedFileOpen(gp_t *gp, const char *file, int fromUI)
+{
+	read_t		*rd = gp->rd;
+
+	if (gpFileIsGP(gp, file) != 0) {
+
+		readConfigGP(rd, file, fromUI);
+	}
+
+#ifdef _WINDOWS
+	else if (legacy_FileIsBAT(gp, file) != 0) {
+
+		legacy_FileOpenBAT(gp, file, fromUI);
+	}
+#endif /* _WINDOWS */
+
+	else {
+		sprintf(gp->sbuf[0],	"load 0 0 text \"%s\"\n"
+					"mkpages -2\n", file);
+
+		readConfigIN(rd, gp->sbuf[0], fromUI);
+	}
+}
+
+static int
 gpDirWalk(gp_t *gp, int dir_N, int revert);
 
 static void
@@ -578,7 +713,7 @@ gpDirWalk(gp_t *gp, int dir_N, int revert)
 {
 	const char		*file = gp->dirent_names[dir_N - 2];
 	char			*eol;
-	int			dN, walk = 0;
+	int			walk = 0;
 
 	if (dir_N == 0) {
 
@@ -656,28 +791,11 @@ gpDirWalk(gp_t *gp, int dir_N, int revert)
 			walk = 1;
 		}
 		else {
-			for (dN = 0; dN < PLOT_DATASET_MAX; ++dN) {
+			sprintf(gp->tempfile, "%s/%s", gp->current_dir, file);
 
-				if (gp->rd->data[dN].format == FORMAT_NONE)
-					break;
-			}
+			gpUnifiedFileOpen(gp, gp->tempfile, 1);
 
-			if (dN < PLOT_DATASET_MAX) {
-
-				sprintf(gp->sbuf[0], "%s/%s", gp->current_dir, file);
-
-				readOpenUnified(gp->rd, dN, 0, 0, gp->sbuf[0], FORMAT_PLAIN_TEXT);
-
-				if (gp->rd->data[dN].format != FORMAT_NONE) {
-
-					readMakePages(gp->rd, dN, -2, 1);
-				}
-
-				walk = gp->shift_on ? 2 : 0;
-			}
-			else {
-				ERROR("Unable to get free dataset\n");
-			}
+			walk = gp->shift_on ? 2 : 0;
 		}
 	}
 
@@ -780,8 +898,10 @@ gpMakeColumnSelectMenu(gp_t *gp, int dN)
 			}
 			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_SCALE) {
 
-				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i)",
-						gp->pl->data[dN].sub[sN].op.scale.column_1);
+				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %.2E, %.2E)",
+						gp->pl->data[dN].sub[sN].op.scale.column_1,
+						gp->pl->data[dN].sub[sN].op.scale.scale,
+						gp->pl->data[dN].sub[sN].op.scale.offset);
 			}
 			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_BINARY_SUBTRACTION
 					|| gp->pl->data[dN].sub[sN].busy == SUBTRACT_BINARY_ADDITION
@@ -823,7 +943,7 @@ gpMakeColumnSelectMenu(gp_t *gp, int dN)
 
 				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %i)",
 						gp->pl->data[dN].sub[sN].op.polyfit.column_X,
-						gp->pl->data[dN].sub[sN].op.polyfit.poly_N);
+						gp->pl->data[dN].sub[sN].op.polyfit.poly_N2);
 			}
 
 			strcpy(la, gp->sbuf[0]);
@@ -1953,10 +2073,13 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 12:
-				editRaise(ed, 16, gp->la->polynomial_edit,
-						"1", mu->box_X, mu->box_Y);
+				if (plotDataBoxPolyfit(pl, gp->fig_N) == 0) {
 
-				gp->stat = GP_EDIT;
+					editRaise(ed, 16, gp->la->polynomial_edit,
+							"1", mu->box_X, mu->box_Y);
+
+					gp->stat = GP_EDIT;
+				}
 				break;
 		}
 	}
@@ -2155,7 +2278,7 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 	const char	*ft;
 	double		scale, offset;
-	int		bit_s, bit_e, len, n;
+	int		arg_1, arg_2, len, n;
 
 	if (edit_N == 1) {
 
@@ -2217,15 +2340,15 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 	}
 	else if (edit_N == 8) {
 
-		n = sscanf(text, "%d-%d", &bit_s, &bit_e);
+		n = sscanf(text, "%d %d", &arg_1, &arg_2);
 
 		if (n != 0) {
 
-			bit_e = (n == 1) ? bit_s : bit_e;
-			bit_e = (bit_e < bit_s) ? bit_s : bit_e;
+			arg_2 = (n == 1) ? arg_1 : arg_2;
+			arg_2 = (arg_2 < arg_1) ? arg_1 : arg_2;
 
 			plotFigureSubtractFilter(pl, gp->fig_N, SUBTRACT_FILTER_BITMASK,
-					(double) bit_s, (double) bit_e);
+					(double) arg_1, (double) arg_2);
 		}
 	}
 	else if (edit_N == 9) {
@@ -2327,11 +2450,17 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 	}
 	else if (edit_N == 16) {
 
-		n = sscanf(text, "%i", &len);
+		n = sscanf(text, "%d %d", &arg_1, &arg_2);
 
-		if (n == 1) {
+		if (n != 0) {
 
-			plotFigureSubtractPolifit(pl, gp->fig_N, len);
+			if (n == 1) {
+
+				arg_2 = arg_1;
+				arg_1 = 0;
+			}
+
+			plotFigureSubtractPolyfit(pl, gp->fig_N, arg_1, arg_2);
 		}
 	}
 }
@@ -2363,9 +2492,8 @@ gpScreenLayout(gp_t *gp)
 }
 
 static void
-gpEventHandle(gp_t *gp)
+gpEventHandle(gp_t *gp, const SDL_Event *ev)
 {
-	SDL_Event	*ev = &gp->ev;
 	plot_t		*pl = gp->pl;
 	read_t		*rd = gp->rd;
 	menu_t		*mu = gp->mu;
@@ -3356,81 +3484,9 @@ gpFPSUpdate(gp_t *gp)
 	}
 }
 
-static int
-gpFileIsGP(gp_t *gp, const char *file)
+gp_t *gp_Alloc()
 {
-	int		rc = 0;
-
-	if (strlen(file) > 3) {
-
-		rc = (strcmp(file + strlen(file) - 3, ".gp") == 0) ? 1 : 0;
-	}
-
-	return rc;
-}
-
-#ifdef _WINDOWS
-static int
-legacy_FileIsBAT(gp_t *gp, const char *file)
-{
-	int		rc = 0;
-
-	if (strlen(file) > 4) {
-
-		file += strlen(file) - 4;
-
-		rc = (strcmp(file, ".bat") == 0 || strcmp(file, ".BAT") == 0) ? 1 : 0;
-	}
-
-	return rc;
-}
-
-static void
-legacy_FileOpenBAT(gp_t *gp, const char *file)
-{
-	FILE		*fd;
-	char		*s, *argv[2];
-	int		line_N = 0;
-
-	fd = unified_fopen(file, "r");
-
-	if (fd == NULL) {
-
-		ERROR("fopen(\"%s\"): %s\n", file, strerror(errno));
-	}
-	else {
-		do {
-			if ((s = fgets(gp->sbuf[0], sizeof(gp->sbuf[0]), fd)) == NULL)
-				break;
-
-			s = strtok(s, " \t");
-
-			if (s != NULL && (strcmp(s, "grm") == 0 || strcmp(s, "GRM") == 0)) {
-
-				if ((argv[0] = strtok(NULL, " \t")) != NULL) {
-
-					if ((argv[1] = strtok(NULL, " \t\r\n")) != NULL) {
-
-						legacy_readConfigGRM(gp->rd, argv[0], argv[1]);
-					}
-				}
-			}
-
-			line_N++;
-
-			if (line_N >= 10)
-				break;
-		}
-		while (1);
-
-		fclose(fd);
-	}
-}
-#endif /* _WINDOWS */
-
-int main(int argn, char *argv[])
-{
-	gp_t		*gp;
+	gp_t	*gp;
 	scheme_t	*sch;
 	lang_t		*la;
 	draw_t		*dw;
@@ -3438,10 +3494,6 @@ int main(int argn, char *argv[])
 	read_t		*rd;
 	menu_t		*mu;
 	edit_t		*ed;
-
-	int		N, W;
-
-	setlocale(LC_NUMERIC, "C");
 
 	gp = (gp_t *) calloc(1, sizeof(gp_t));
 
@@ -3466,18 +3518,6 @@ int main(int argn, char *argv[])
 	ed = editAlloc(dw, sch);
 	gp->ed = ed;
 
-	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) < 0) {
-
-		ERROR("SDL_Init: %s\n", SDL_GetError());
-	}
-
-	if (TTF_Init() < 0) {
-
-		ERROR("TTF_Init: %s\n", SDL_GetError());
-	}
-
-	IMG_Init(IMG_INIT_PNG);
-
 	gpFileGetPath(gp);
 
 	if (gp->rcfile[0] != 0) {
@@ -3489,7 +3529,7 @@ int main(int argn, char *argv[])
 
 		if (gpFileExist(gp->rcfile) != 0) {
 
-			readConfigGP(rd, gp->rcfile);
+			readConfigGP(rd, gp->rcfile, 0);
 		}
 		else {
 			gpFileGetLocal(gp);
@@ -3501,75 +3541,67 @@ int main(int argn, char *argv[])
 
 			if (gpFileExist(gp->rcfile) != 0) {
 
-				readConfigGP(rd, gp->rcfile);
+				readConfigGP(rd, gp->rcfile, 0);
 			}
 		}
 	}
 
-	N = 0;
+	gp->hinting = 2;
 
-#ifdef _WINDOWS
-	if (argn >= 3) {
+	strcpy(gp->current_dir, ".");
 
-		legacy_readConfigGRM(rd, argv[1], argv[2]);
-	}
-	else
-#endif /* _WINDOWS */
+	return gp;
+}
 
-	if (argn == 2) {
+void gp_Clean(gp_t *gp)
+{
+	scheme_t	*sch = gp->sch;
+	lang_t		*la = gp->la;
+	draw_t		*dw = gp->dw;
+	plot_t		*pl = gp->pl;
+	read_t		*rd = gp->rd;
+	menu_t		*mu = gp->mu;
+	edit_t		*ed = gp->ed;
 
-#ifdef _WINDOWS
-		legacy_ACP_to_UTF8(gp->tempfile, argv[1], READ_FILE_PATH_MAX);
-#else /* _WINDOWS */
+	if (gp->surface != NULL) {
 
-		if (strlen(argv[1]) < READ_FILE_PATH_MAX) {
-
-			strcpy(gp->tempfile, argv[1]);
-		}
-		else {
-			ERROR("Too long file name\n");
-			return 1;
-		}
-#endif
-
-		if (gpFileIsGP(gp, gp->tempfile) != 0) {
-
-			readConfigGP(rd, gp->tempfile);
-		}
-
-#ifdef _WINDOWS
-		else if (legacy_FileIsBAT(gp, gp->tempfile) != 0) {
-
-			legacy_FileOpenBAT(gp, gp->tempfile);
-		}
-#endif /* _WINDOWS */
-
-		else if (strcmp(gp->tempfile, "STDIN") == 0) {
-
-			readOpenUnified(rd, N, 0, 0, NULL, FORMAT_PLAIN_TEXT);
-
-			if (rd->data[N].format != FORMAT_NONE) {
-
-				readMakePages(rd, N, -2, 0);
-			}
-		}
-		else {
-			readOpenUnified(rd, N, 0, 0, gp->tempfile, FORMAT_PLAIN_TEXT);
-
-			if (rd->data[N].format != FORMAT_NONE) {
-
-				readMakePages(rd, N, -2, 0);
-			}
-		}
-	}
-	else {
-		gpMakeHello(gp);
+		SDL_FreeSurface(gp->surface);
 	}
 
-	if (readValidate(rd) != 0) {
+	if (gp->window != NULL) {
 
-		return 1;
+		SDL_DestroyWindow(gp->window);
 	}
+
+	plotClean(pl);
+	readClean(rd);
+	menuClean(mu);
+	editClean(ed);
+
+	free(sch);
+	free(la);
+	free(dw);
+	free(gp);
+}
+
+void gp_TakeConfig(gp_t *gp, const char *config)
+{
+	readConfigIN(gp->rd, config, 0);
+}
+
+int gp_OpenWindow(gp_t *gp)
+{
+	scheme_t	*sch = gp->sch;
+	lang_t		*la = gp->la;
+	draw_t		*dw = gp->dw;
+	read_t		*rd = gp->rd;
+
+	if (gp->window_ID != 0) {
+
+		return gp->window_ID;
+	}
+
+	readConfigVerify(rd);
 
 	gp->window = SDL_CreateWindow("GP", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
 			rd->window_size_x, rd->window_size_y, SDL_WINDOW_RESIZABLE);
@@ -3577,6 +3609,13 @@ int main(int argn, char *argv[])
 	if (gp->window == NULL) {
 
 		ERROR("SDL_CreateWindow: %s\n", SDL_GetError());
+	}
+
+	gp->window_ID = SDL_GetWindowID(gp->window);
+
+	if (gp->window_ID == 0) {
+
+		ERROR("SDL_GetWindowID: %s\n", SDL_GetError());
 	}
 
 	SDL_SetWindowMinimumSize(gp->window, GP_MIN_SIZE_X, GP_MIN_SIZE_Y);
@@ -3605,7 +3644,6 @@ int main(int argn, char *argv[])
 
 	gp->colorscheme = rd->colorscheme;
 	gp->language = rd->language;
-	gp->hinting = 2;
 
 	dw->antialiasing = rd->antialiasing;
 	dw->solidfont = rd->solidfont;
@@ -3613,155 +3651,239 @@ int main(int argn, char *argv[])
 
 	gpFontHinting(gp);
 
-	strcpy(gp->current_dir, ".");
-
 	langFill(la, gp->language);
 	schemeFill(sch, gp->colorscheme);
 
-	gpMakePageMenu(gp);
 	readSelectPage(rd, 1);
 
-	while (gp->done != 1) {
+	return gp->window_ID;
+}
 
-		gp->clock = SDL_GetTicks();
+void gp_TakeEvent(gp_t *gp, const SDL_Event *ev)
+{
+	if (ev->window.windowID == gp->window_ID) {
 
-		while (SDL_PollEvent(&gp->ev) != 0) {
+		gpEventHandle(gp, ev);
 
-			gpEventHandle(gp);
+		gp->active = 1;
+	}
+}
+
+int gp_IsQuit(gp_t *gp)
+{
+	return gp->done;
+}
+
+int gp_Draw(gp_t *gp)
+{
+	scheme_t	*sch = gp->sch;
+	plot_t		*pl = gp->pl;
+	read_t		*rd = gp->rd;
+	menu_t		*mu = gp->mu;
+	edit_t		*ed = gp->ed;
+
+	gp->clock = SDL_GetTicks();
+	gp->drawn = 0;
+
+	if (rd->files_N != 0) {
+
+		if (readUpdate(rd) != 0) {
 
 			gp->active = 1;
 		}
+	}
+	else {
+		plotAxisScaleLock(pl, 0);
+	}
 
-		if (rd->files_N != 0) {
+	if (gp->i_show_fps != 0) {
 
-			if (readUpdate(rd) != 0) {
+		gp->active = 1;
+	}
 
-				gp->active = 1;
+	if (gp->active != 0) {
+
+		gp->idled = 0;
+	}
+
+	if (gp->updated + 250 < gp->clock) {
+
+		gp->idled += 1;
+		gp->active = (gp->idled < 20) ? 1 : 0;
+	}
+
+	if (gp->active != 0) {
+
+		gp->unfinished = 1;
+
+		gp->updated = gp->clock;
+		gp->active = 0;
+	}
+
+	if (gp->unfinished != 0) {
+
+		SDL_LockSurface(gp->surface);
+
+		drawClearSurface(gp->dw, gp->surface, pl->sch->plot_background);
+
+		SDL_UnlockSurface(gp->surface);
+
+		plotLayout(pl);
+		plotAxisScaleDefault(pl);
+
+		if (gp->stat == GP_RANGE_SELECT) {
+
+			if (gp->shift_on == 0) {
+
+				gpDrawRangeLight(gp->surface, gp);
 			}
 		}
-		else {
-			plotAxisScaleLock(pl, 0);
+		else if (gp->stat == GP_BOX_SELECT) {
+
+			gpDrawBoxLight(gp->surface, gp);
 		}
+
+		plotDraw(pl, gp->surface);
+
+		if (gp->stat == GP_RANGE_SELECT) {
+
+			gpDrawRangeSelect(gp->surface, gp);
+		}
+		else if (gp->stat == GP_BOX_SELECT) {
+
+			gpDrawBoxSelect(gp->surface, gp);
+		}
+
+		if (gp->hover_box) {
+
+			drawFillRect(gp->surface, pl->screen.min_x,
+					pl->screen.min_y - gp->layout_page_box,
+					pl->screen.max_x, pl->screen.min_y,
+					pl->sch->plot_hovered);
+		}
+
+		gpTextLeftCrop(pl, gp->sbuf[1], rd->page[rd->page_N].title,
+				gp->layout_menu_page_margin);
+
+		sprintf(gp->sbuf[0], "%3d. %s", rd->page_N, gp->sbuf[1]);
+
+		drawText(gp->dw, gp->surface, pl->font, (pl->screen.min_x + pl->screen.max_x) / 2,
+				pl->screen.min_y + gp->layout_page_title_offset, gp->sbuf[0],
+				TEXT_CENTERED, sch->plot_text);
+
+		menuDraw(mu, gp->surface);
+		editDraw(ed, gp->surface);
 
 		if (gp->i_show_fps != 0) {
 
-			gp->active = 1;
+			int		len, hh;
+
+			sprintf(gp->sbuf[0], "FPS: %2d", gp->i_FPS);
+
+			TTF_SizeUTF8(pl->font, gp->sbuf[0], &len, &hh);
+
+			drawText(gp->dw, gp->surface, pl->font, pl->screen.max_x - (len + 5),
+					pl->screen.min_y + gp->layout_page_title_offset,
+					gp->sbuf[0], TEXT_CENTERED_ON_Y, 0xFF5533);
 		}
 
-		if (gp->active != 0) {
+		SDL_BlitSurface(gp->surface, NULL, gp->fb, NULL);
+		SDL_UpdateWindowSurface(gp->window);
 
-			gp->idled = 0;
+		gpFPSUpdate(gp);
+
+		if (pl->draw_in_progress == 0) {
+
+			gp->unfinished = 0;
 		}
 
-		if (gp->updated + 250 < gp->clock) {
-
-			gp->idled += 1;
-			gp->active = (gp->idled < 20) ? 1 : 0;
-		}
-
-		if (gp->active != 0) {
-
-			gp->unfinished = 1;
-
-			gp->updated = gp->clock;
-			gp->active = 0;
-		}
-
-		if (gp->unfinished != 0) {
-
-			SDL_LockSurface(gp->surface);
-
-			drawClearSurface(gp->dw, gp->surface, pl->sch->plot_background);
-
-			SDL_UnlockSurface(gp->surface);
-
-			plotLayout(pl);
-			plotAxisScaleDefault(pl);
-
-			if (gp->stat == GP_RANGE_SELECT) {
-
-				if (gp->shift_on == 0) {
-
-					gpDrawRangeLight(gp->surface, gp);
-				}
-			}
-			else if (gp->stat == GP_BOX_SELECT) {
-
-				gpDrawBoxLight(gp->surface, gp);
-			}
-
-			plotDraw(pl, gp->surface);
-
-			if (gp->stat == GP_RANGE_SELECT) {
-
-				gpDrawRangeSelect(gp->surface, gp);
-			}
-			else if (gp->stat == GP_BOX_SELECT) {
-
-				gpDrawBoxSelect(gp->surface, gp);
-			}
-
-			if (gp->hover_box) {
-
-				drawFillRect(gp->surface, pl->screen.min_x,
-						pl->screen.min_y - gp->layout_page_box,
-						pl->screen.max_x, pl->screen.min_y,
-						pl->sch->plot_hovered);
-			}
-
-			gpTextLeftCrop(gp->pl, gp->sbuf[1], rd->page[rd->page_N].title,
-					gp->layout_menu_page_margin);
-
-			sprintf(gp->sbuf[0], "%3d. %s", rd->page_N, gp->sbuf[1]);
-
-			drawText(gp->dw, gp->surface, pl->font, (pl->screen.min_x + pl->screen.max_x) / 2,
-					pl->screen.min_y + gp->layout_page_title_offset, gp->sbuf[0],
-					TEXT_CENTERED, sch->plot_text);
-
-			menuDraw(mu, gp->surface);
-			editDraw(ed, gp->surface);
-
-			if (gp->i_show_fps != 0) {
-
-				sprintf(gp->sbuf[0], "FPS: %2d", gp->i_FPS);
-
-				TTF_SizeUTF8(pl->font, gp->sbuf[0], &W, &N);
-
-				drawText(gp->dw, gp->surface, pl->font, pl->screen.max_x - (W + 5),
-						pl->screen.min_y + gp->layout_page_title_offset,
-						gp->sbuf[0], TEXT_CENTERED_ON_Y, 0xFF5533);
-			}
-
-			SDL_BlitSurface(gp->surface, NULL, gp->fb, NULL);
-			SDL_UpdateWindowSurface(gp->window);
-
-			gpFPSUpdate(gp);
-
-			if (pl->draw_in_progress == 0) {
-
-				gp->unfinished = 0;
-			}
-		}
-		else {
-			SDL_Delay(10);
-		}
-
-		gpTakeScreen(gp);
-		gpYankScreen(gp);
+		gp->drawn = 1;
 	}
 
-	plotClean(pl);
-	readClean(rd);
-	menuClean(mu);
-	editClean(ed);
+	gpTakeScreen(gp);
+	gpYankScreen(gp);
 
-	free(sch);
-	free(la);
-	free(dw);
-	free(gp);
+	return gp->drawn;
+}
+
+#ifndef _EMBED_GP
+int main(int argn, char *argv[])
+{
+	gp_t		*gp;
+
+	setlocale(LC_NUMERIC, "C");
+
+	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) < 0) {
+
+		ERROR("SDL_Init: %s\n", SDL_GetError());
+
+		return 1;
+	}
+
+	if (TTF_Init() < 0) {
+
+		ERROR("TTF_Init: %s\n", SDL_GetError());
+
+		return 1;
+	}
+
+	IMG_Init(IMG_INIT_PNG);
+
+	gp = gp_Alloc();
+
+#ifdef _WINDOWS
+	if (argn >= 3) {
+
+		legacy_readConfigGRM(gp->rd, NULL, argv[1], argv[2], 0);
+	}
+	else
+#endif /* _WINDOWS */
+
+	if (argn == 2) {
+
+#ifdef _WINDOWS
+		legacy_ACP_to_UTF8(gp->tempfile, argv[1], READ_FILE_PATH_MAX);
+#else /* _WINDOWS */
+
+		if (strlen(argv[1]) < READ_FILE_PATH_MAX) {
+
+			strcpy(gp->tempfile, argv[1]);
+		}
+		else {
+			ERROR("Too long file name\n");
+
+			return 1;
+		}
+#endif
+
+		gpUnifiedFileOpen(gp, gp->tempfile, 0);
+	}
+	else {
+		gpMakeHello(gp);
+	}
+
+	gp_OpenWindow(gp);
+
+	while (gp_IsQuit(gp) == 0) {
+
+		SDL_Event		ev;
+
+		while (SDL_PollEvent(&ev) != 0) {
+
+			gp_TakeEvent(gp, &ev);
+		}
+
+		if (gp_Draw(gp) == 0) {
+
+			SDL_Delay(10);
+		}
+	}
+
+	gp_Clean(gp);
 
 	SDL_Quit();
 
 	return 0;
 }
+#endif /* _EMBED_GP */
 
