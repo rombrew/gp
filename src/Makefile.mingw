@@ -13,16 +13,16 @@ MK	= mkdir -p
 RM      = rm -rf
 
 CFLAGS  = -std=gnu99 -pipe -Wall -O3 -flto
-CFLAGS  += -mtune=generic -fno-stack-protector
+CFLAGS  += -fno-stack-protector
 CFLAGS  += -I$(SDLDIR)/include -I$(SDLDIR)/include/SDL2
 CFLAGS  += -D_WINDOWS -D__USE_MINGW_ANSI_STDIO
 
 LFLAGS	= -lm -lSDL2 -lSDL2_ttf -lSDL2_image -static
 LFLAGS	+= -L$(SDLDIR)/lib
 
-LFLAGS	+= -Wl,--gc-sections -Wl,--no-undefined -ldinput8 -ldxguid -ldxerr8 \
-	   -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lshell32 \
-	   -lsetupapi -lversion -luuid -lusp10 -lgdi32 -lrpcrt4 -static-libgcc
+LFLAGS  += -Wl,--gc-sections -Wl,--no-undefined -lusp10 -ldinput8 -ldxguid \
+	   -ldxerr8  -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 \
+	   -lshell32 -lsetupapi -lversion -luuid -lrpcrt4 -static-libgcc
 
 OBJS	= lz4/lz4.o \
 	  async.o \
