@@ -372,42 +372,46 @@ legacy_GetFreeData(read_t *rd)
 static int
 legacy_GetLabel(char *s, char *label[9])
 {
-	char		*lex, *cur, *eol;
-	int		N = 0;
+	char		*cur;
+	int		m, N;
 
-	lex = NULL;
 	cur = s;
-	eol = s;
+	m = 0;
+	N = 0;
 
 	while (*s != 0) {
 
-		if (strchr(" \t\';", *s) != NULL) {
+		if (strchr(" \t,\'", *s) != NULL) {
 
-			cur = s + 1;
+			if (m != 0) {
+
+				if (N != 0 || *s == ',') {
+
+					label[N++] = cur;
+
+					*s = 0;
+
+					if (N >= 9)
+						break;
+				}
+
+				m = 0;
+			}
 		}
 		else {
-			lex = cur;
-			eol = s;
-		}
+			if (m == 0) {
 
-		if (*s == ',' && lex != NULL) {
-
-			label[N++] = lex;
-
-			lex = NULL;
-			cur = s + 1;
-			*eol = 0;
-
-			if (N >= 9)
-				break;
+				cur = s;
+				m = 1;
+			}
 		}
 
 		++s;
 	}
 
-	if (N < 9 && lex != NULL) {
+	if (m != 0 && N > 0 && N < 9) {
 
-		label[N++] = lex;
+		label[N++] = cur;
 	}
 
 	return N;
@@ -420,7 +424,7 @@ legacy_Trim(read_t *rd, char *s)
 
 	while (*s != 0) {
 
-		if (strchr(" \t\';", *s) == NULL)
+		if (strchr(" \t\'", *s) == NULL)
 			break;
 
 		s++;
@@ -614,9 +618,6 @@ void legacy_readConfigGRM(read_t *rd, const char *path, const char *confile, con
 					if (strlen(tbuf) < 5)
 						break;
 
-					if (strstr(tbuf, "'END") != NULL)
-						break;
-
 					N = sscanf(tbuf, "%i %i %i %le %le",
 							&stub, &cY, &cYm, &scale, &offset);
 
@@ -668,6 +669,9 @@ void legacy_readConfigGRM(read_t *rd, const char *path, const char *confile, con
 							confile, line_N, pN);
 						break;
 					}
+
+					if (strstr(tbuf, "'END") != NULL)
+						break;
 				}
 				while (1);
 
@@ -713,8 +717,12 @@ TEXT_GetRow(read_t *rd, int dN)
 	fval_t 		*row = rd->data[dN].row;
 	int		*hint = rd->data[dN].hint;
 	char 		*r, *s = rd->data[dN].buf;
-	int		hex, N = 0, m = 0;
+
+	int		hex, m, N;
 	double		val;
+
+	m = 0;
+	N = 0;
 
 	while (*s != 0) {
 
@@ -805,7 +813,7 @@ static int
 TEXT_GetLabel(read_t *rd, int dN)
 {
 	char		*label, *s = rd->data[dN].buf;
-	int		N = 0, m = 0;
+	int		m, N;
 
 #ifdef _WINDOWS
 	if (rd->legacy_label_enc == 1) {
@@ -817,6 +825,9 @@ TEXT_GetLabel(read_t *rd, int dN)
 		legacy_OEM_to_UTF8(s, s, sizeof(rd->data[dN].buf));
 	}
 #endif /* _WINDOWS */
+
+	m = 0;
+	N = 0;
 
 	while (*s != 0) {
 
@@ -1418,7 +1429,7 @@ configToken(read_t *rd, parse_t *pa)
 
 		while (c != -1 && c != '"' && strchr(rd->mk_config.lend, c) == NULL) {
 
-			if (n < READ_TOKEN_MAX - 1) {
+			if (n < READ_FILE_PATH_MAX - 1) {
 
 				*p++ = c;
 				n++;

@@ -8,6 +8,7 @@ MK	= mkdir -p
 RM      = rm -rf
 
 CFLAGS  = -std=gnu99 -pipe -Wall -O3 -flto -g3
+CFLAGS  += -fno-stack-protector
 CFLAGS  += -I/usr/include/SDL2 -D_REENTRANT
 
 LFLAGS	= -lm -lSDL2 -lSDL2_ttf -lSDL2_image
