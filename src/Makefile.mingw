@@ -12,20 +12,19 @@ STRIP	= $(CROSS)-strip -s
 MK	= mkdir -p
 RM      = rm -rf
 
-CFLAGS  = -std=gnu99 -pipe -Wall -O3 -flto
+CFLAGS  = -std=gnu99 -pipe -Wall -O3 -flto -g1
 CFLAGS  += -fno-stack-protector
 CFLAGS  += -I$(SDLDIR)/include -I$(SDLDIR)/include/SDL2
-CFLAGS  += -D_WINDOWS -D__USE_MINGW_ANSI_STDIO
+CFLAGS  += -D_WINDOWS
 
 LFLAGS	= -lm -lSDL2 -lSDL2_ttf -lSDL2_image -static
 LFLAGS	+= -L$(SDLDIR)/lib
 
 LFLAGS  += -Wl,--gc-sections -Wl,--no-undefined -lusp10 -ldinput8 -ldxguid \
-	   -ldxerr8  -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 \
+	   -ldxerr8 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 \
 	   -lshell32 -lsetupapi -lversion -luuid -lrpcrt4 -static-libgcc
 
-OBJS	= lz4/lz4.o \
-	  async.o \
+OBJS	= async.o \
 	  blob_ttf.o \
 	  dirent.o \
 	  draw.o \
@@ -33,6 +32,7 @@ OBJS	= lz4/lz4.o \
 	  gp.o \
 	  lang.o \
 	  lse.o \
+	  lz4.o \
 	  menu.o \
 	  plot.o \
 	  read.o \

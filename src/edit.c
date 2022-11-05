@@ -417,7 +417,7 @@ void editDraw(edit_t *ed, SDL_Surface *surface)
 	baseY = ed->box_Y + ed->layout_height + ed->layout_height / 2;
 
 	endX = ed->box_X + ed->size_X - ed->layout_height + ed->layout_height / 2;
-	endY = ed->box_Y + 2 * ed->layout_height + ed->layout_height / 2;
+	endY = ed->box_Y + 2 * ed->layout_height + ed->dw->thickness + ed->layout_height / 2;
 
 	drawLine(ed->dw, surface, &ed->screen, baseX, baseY, endX, baseY, ed->sch->menu_scrollbar);
 	drawLine(ed->dw, surface, &ed->screen, endX, baseY, endX, endY, ed->sch->menu_scrollbar);

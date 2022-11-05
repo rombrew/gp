@@ -23,11 +23,10 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 
-#include "lz4/lz4.h"
-
 #include "plot.h"
 #include "draw.h"
 #include "lse.h"
+#include "lz4.h"
 #include "scheme.h"
 
 extern SDL_RWops *TTF_RW_roboto_mono_normal();

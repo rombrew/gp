@@ -3834,7 +3834,10 @@ int main(int argn, char *argv[])
 #ifdef _WINDOWS
 	if (argn >= 3) {
 
-		legacy_readConfigGRM(gp->rd, NULL, argv[1], argv[2], 0);
+		legacy_ACP_to_UTF8(gp->sbuf[0], argv[1], READ_FILE_PATH_MAX);
+		legacy_ACP_to_UTF8(gp->sbuf[1], argv[2], READ_FILE_PATH_MAX);
+
+		legacy_readConfigGRM(gp->rd, NULL, gp->sbuf[0], gp->sbuf[1], 0);
 	}
 	else
 #endif /* _WINDOWS */

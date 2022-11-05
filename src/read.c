@@ -339,18 +339,6 @@ legacy_fopen_from_UTF8(const char *file, const char *mode)
 	return _wfopen(wfile, wmode);
 }
 
-static FILE *
-legacy_fopen_from_ACP(const char *file, const char *mode)
-{
-	wchar_t			wfile[READ_FILE_PATH_MAX];
-	wchar_t			wmode[READ_TOKEN_MAX];
-
-	MultiByteToWideChar(CP_ACP, 0, file, -1, wfile, READ_FILE_PATH_MAX);
-	MultiByteToWideChar(CP_ACP, 0, mode, -1, wmode, READ_TOKEN_MAX);
-
-	return _wfopen(wfile, wmode);
-}
-
 static int
 legacy_GetFreeData(read_t *rd)
 {
@@ -477,7 +465,7 @@ void legacy_readConfigGRM(read_t *rd, const char *path, const char *confile, con
 		pfile = pbuf;
 	}
 
-	fd = legacy_fopen_from_ACP(pfile, "rb");
+	fd = legacy_fopen_from_UTF8(pfile, "rb");
 
 	if (fd == NULL) {
 
@@ -525,7 +513,7 @@ void legacy_readConfigGRM(read_t *rd, const char *path, const char *confile, con
 		pfile = pbuf;
 	}
 
-	fd = legacy_fopen_from_ACP(pfile, "r");
+	fd = legacy_fopen_from_UTF8(pfile, "r");
 
 	if (fd == NULL) {
 
@@ -842,7 +830,6 @@ TEXT_GetLabel(read_t *rd, int dN)
 		else {
 			if (m == 0) {
 
-				rd->data[dN].hint[N] = DATA_HINT_NONE;
 				label = rd->data[dN].label[N++];
 
 				if (N >= READ_COLUMN_MAX)
@@ -958,7 +945,7 @@ TEXT_GetCN(read_t *rd, int dN, FILE *fd, fval_t *rbuf)
 
 			if (cN != 0) {
 
-				if (cN != label_cN) {
+				if (cN > label_cN) {
 
 					label_cN = TEXT_GetLabel(rd, dN);
 					fixed_N = 0;
