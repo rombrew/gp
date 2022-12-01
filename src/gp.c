@@ -88,8 +88,6 @@ struct gp_struct {
 	int		i_FPS;
 
 	int		fullscreen;
-	int		colorscheme;
-	int		language;
 	int		hinting;
 
 	int		cur_X;
@@ -115,10 +113,10 @@ struct gp_struct {
 	int		layout_menu_dir_margin;
 	int		layout_menu_dataset_margin;
 
-	char		current_dir[READ_FILE_PATH_MAX];
-	char		dirent_names[GP_FILE_DIR_MAX][PLOT_STRING_MAX];
-	int		current_dir_ok;
+	char		cwd[READ_FILE_PATH_MAX];
+	int		cwd_ok;
 
+	char		d_names[GP_FILE_DIR_MAX][PLOT_STRING_MAX];
 	char		la_menu[GP_FILE_DIR_MAX * PLOT_STRING_MAX + 1];
 };
 
@@ -138,12 +136,6 @@ const char *utf8_skip(const char *s, int n);
 static void
 gpMakeHello(gp_t *gp)
 {
-	union {
-		unsigned long long	l;
-		double			f;
-	}
-	const nan = { 0xFFF8000000000000ULL };
-
 	const fval_t omul[] = {
 
 		21.180, 25.120, 20.298, 42.448, 19.203, 72.868, 18.649,
@@ -155,15 +147,15 @@ gpMakeHello(gp_t *gp)
 		125.652, 182.521, 130.473, 168.671, 133.481, 156.518, 135.785,
 		145.149, 137.191, 112.465, 136.247, 72.753, 134.526, 39.231,
 		133.602, 25.120, 105.497, 25.120, 77.391, 25.120, 49.286,
-		25.120, 21.180, 25.120, nan.f, nan.f, 32.487, 120.416, 41.887,
+		25.120, 21.180, 25.120, FP_NAN, FP_NAN, 32.487, 120.416, 41.887,
 		125.997, 50.408, 127.691, 58.540, 125.820, 66.771, 120.710,
-		nan.f, nan.f, 90.832, 120.397, 100.879, 126.139, 109.671,
-		128.016, 117.918, 126.115, 126.329, 120.519, nan.f, nan.f,
+		FP_NAN, FP_NAN, 90.832, 120.397, 100.879, 126.139, 109.671,
+		128.016, 117.918, 126.115, 126.329, 120.519, FP_NAN, FP_NAN,
 		51.817, 91.523, 66.133, 83.048, 79.760, 81.249, 92.873, 84.769,
-		105.648, 92.251, nan.f, nan.f, 36.994, 25.848, 43.501, 32.639,
-		50.371, 35.609, 58.851, 33.517, 70.189, 25.120, nan.f, nan.f,
+		105.648, 92.251, FP_NAN, FP_NAN, 36.994, 25.848, 43.501, 32.639,
+		50.371, 35.609, 58.851, 33.517, 70.189, 25.120, FP_NAN, FP_NAN,
 		85.189, 25.120, 92.850, 33.737, 101.987, 36.883, 111.918,
-		34.147, 121.963, 25.120, nan.f, nan.f, 134.434, 40.169,
+		34.147, 121.963, 25.120, FP_NAN, FP_NAN, 134.434, 40.169,
 		135.268, 39.659, 139.077, 39.450, 147.824, 41.521, 163.470,
 		47.850, 175.241, 59.465, 176.895, 75.080, 177.196, 93.201,
 		184.908, 112.335, 189.761, 118.670, 193.306, 123.087, 195.480,
@@ -172,7 +164,7 @@ gpMakeHello(gp_t *gp)
 		121.809, 172.436, 114.071, 167.183, 104.232, 164.575, 91.517,
 		165.070, 78.686, 164.466, 67.214, 158.560, 58.576, 151.353,
 		55.039, 143.859, 52.910, 137.973, 51.867, 135.590, 51.590,
-		nan.f, nan.f, -55.581, 25.377
+		FP_NAN, FP_NAN, -55.581, 25.377
 	};
 
 	const int lN = sizeof(omul) / sizeof(omul[0]) / 2;
@@ -258,10 +250,12 @@ gpDefaultFile(gp_t *gp)
 		ERROR("fopen(\"%s\"): %s\n", gp->rcfile, strerror(errno));
 	}
 	else {
-		fprintf(fd,	"font 26 \"normal\"\n"
+		fprintf(fd,	"gpversion %i\n", GP_CONFIG_VERSION);
+
+		fprintf(fd,	"font 24 \"normal\"\n"
 				"preload 8388608\n"
 				"chunk 4096\n"
-				"timeout 10000\n"
+				"timeout 1000\n"
 				"windowsize 1200 900\n"
 				"language 0\n"
 				"colorscheme 0\n"
@@ -271,6 +265,7 @@ gpDefaultFile(gp_t *gp)
 				"drawing line 2\n"
 				"timecol -1\n"
 				"shortfilename 1\n"
+				"interpolation 1\n"
 				"precision 9\n"
 				"lz4_compress 1\n");
 
@@ -348,6 +343,32 @@ gpTextFloat(plot_t *pl, char *sbuf, double val)
 }
 
 static void
+gpScreenLayout(gp_t *gp)
+{
+	plot_t		*pl = gp->pl;
+	menu_t		*mu = gp->mu;
+	edit_t		*ed = gp->ed;
+
+	mu->screen.min_x = 0;
+	mu->screen.max_x = gp->surface->w - 1;
+	mu->screen.min_y = 0;
+	mu->screen.max_y = gp->surface->h - 1;
+
+	ed->screen.min_x = 0;
+	ed->screen.max_x = gp->surface->w - 1;
+	ed->screen.min_y = 0;
+	ed->screen.max_y = gp->surface->h - 1;
+
+	pl->screen.min_x = 0;
+	pl->screen.max_x = gp->surface->w - 1;
+	pl->screen.min_y = gp->layout_page_box;
+	pl->screen.max_y = gp->surface->h - 1;
+
+	menuLayout(mu);
+	editLayout(ed);
+}
+
+static void
 gpFontLayout(gp_t *gp)
 {
 	plot_t		*pl = gp->pl;
@@ -366,8 +387,6 @@ gpFontLayout(gp_t *gp)
 	gp->layout_menu_page_margin = 8;
 	gp->layout_menu_dir_margin = 12;
 	gp->layout_menu_dataset_margin = 16;
-
-	pl->screen.min_y = gp->layout_page_box;
 }
 
 static void
@@ -411,8 +430,10 @@ gpFontToggle(gp_t *gp, int toggle, int font_pt)
 
 	plotFontDefault(pl, pl->layout_font_ttf, font_pt, style);
 
-	gpFontLayout(gp);
 	gpFontHinting(gp);
+
+	gpFontLayout(gp);
+	gpScreenLayout(gp);
 }
 
 static void
@@ -591,16 +612,16 @@ gpMakeDirMenu(gp_t *gp)
 
 	menulen = gpScreenLength(gp->pl) - gp->layout_menu_dir_margin;
 
-	dir = opendir(gp->current_dir);
+	dir = opendir(gp->cwd);
 
 	if (dir == NULL) {
 
 		gpDirWalk(gp, 2, 1);
 
-		dir = opendir(gp->current_dir);
+		dir = opendir(gp->cwd);
 	}
 
-	gpTextLeftCrop(gp->pl, gp->sbuf[1], gp->current_dir, gp->layout_menu_dir_margin);
+	gpTextLeftCrop(gp->pl, gp->sbuf[1], gp->cwd, gp->layout_menu_dir_margin);
 
 	sprintf(gp->sbuf[0], "[%s]", gp->sbuf[1]);
 
@@ -615,7 +636,7 @@ gpMakeDirMenu(gp_t *gp)
 	strcpy(la, "/..");
 	la += strlen(la) + 1;
 
-	strcpy(gp->dirent_names[0], "/..");
+	strcpy(gp->d_names[0], "/..");
 	eN = 1;
 
 	if (dir != NULL) {
@@ -633,7 +654,7 @@ gpMakeDirMenu(gp_t *gp)
 
 					if (strlen(gp->sbuf[0]) < PLOT_STRING_MAX) {
 
-						strcpy(gp->dirent_names[eN], gp->sbuf[0]);
+						strcpy(gp->d_names[eN], gp->sbuf[0]);
 
 						gpTextLeftCrop(gp->pl, gp->sbuf[1], en->d_name,
 								gp->layout_menu_dir_margin);
@@ -665,9 +686,9 @@ gpMakeDirMenu(gp_t *gp)
 
 				if (strlen(gp->sbuf[0]) < PLOT_STRING_MAX) {
 
-					strcpy(gp->dirent_names[eN], gp->sbuf[0]);
+					strcpy(gp->d_names[eN], gp->sbuf[0]);
 
-					sprintf(gp->sbuf[0], "%s/%s", gp->current_dir, en->d_name);
+					sprintf(gp->sbuf[0], "%s/%s", gp->cwd, en->d_name);
 
 					kmg = 0;
 
@@ -703,7 +724,7 @@ gpMakeDirMenu(gp_t *gp)
 		closedir(dir);
 	}
 
-	gp->current_dir_ok = (dir != NULL) ? 1 : 0;
+	gp->cwd_ok = (dir != NULL) ? 1 : 0;
 
 	*la = 0;
 }
@@ -711,14 +732,14 @@ gpMakeDirMenu(gp_t *gp)
 static int
 gpDirWalk(gp_t *gp, int dir_N, int revert)
 {
-	const char		*file = gp->dirent_names[dir_N - 2];
+	const char		*file = gp->d_names[dir_N - 2];
 	char			*eol;
 	int			walk = 0;
 
 	if (dir_N == 0) {
 
 		editRaise(gp->ed, 9, gp->la->file_name_edit,
-				gp->current_dir, gp->mu->box_X, gp->mu->box_Y);
+				gp->cwd, gp->mu->box_X, gp->mu->box_Y);
 
 		gp->stat = GP_EDIT;
 	}
@@ -728,15 +749,15 @@ gpDirWalk(gp_t *gp, int dir_N, int revert)
 	}
 	else if (dir_N == 2) {
 
-		if (*gp->current_dir != 0 && gp->current_dir_ok != 0) {
+		if (*gp->cwd != 0 && gp->cwd_ok != 0) {
 
-			eol = gp->current_dir + strlen(gp->current_dir) - 1;
+			eol = gp->cwd + strlen(gp->cwd) - 1;
 
 			do {
 				if (*eol == '/' || *eol == '\\')
 					break;
 
-				if (gp->current_dir == eol)
+				if (gp->cwd == eol)
 					break;
 
 				eol--;
@@ -745,7 +766,7 @@ gpDirWalk(gp_t *gp, int dir_N, int revert)
 
 			if ((*eol == '/' || *eol == '\\') && strcmp(eol, "/..") != 0) {
 
-				if (gp->current_dir == eol) {
+				if (gp->cwd == eol) {
 
 					*(eol + 1) = 0;
 				}
@@ -753,23 +774,23 @@ gpDirWalk(gp_t *gp, int dir_N, int revert)
 					*eol = 0;
 				}
 			}
-			else if (gp->current_dir[0] == '.' && revert == 0) {
+			else if (gp->cwd[0] == '.' && revert == 0) {
 
-				if (*gp->current_dir != 0) {
+				if (*gp->cwd != 0) {
 
-					eol = gp->current_dir + strlen(gp->current_dir) - 1;
+					eol = gp->cwd + strlen(gp->cwd) - 1;
 
 					if (*eol == '/' || *eol == '\\')
 						*eol = 0;
 				}
 
-				strcat(gp->current_dir, file);
+				strcat(gp->cwd, file);
 			}
 		}
 		else {
 			if (revert == 0) {
 
-				strcpy(gp->current_dir, ".");
+				strcpy(gp->cwd, ".");
 			}
 		}
 
@@ -778,24 +799,24 @@ gpDirWalk(gp_t *gp, int dir_N, int revert)
 	else {
 		if (file[0] == '/') {
 
-			if (*gp->current_dir != 0) {
+			if (*gp->cwd != 0) {
 
-				eol = gp->current_dir + strlen(gp->current_dir) - 1;
+				eol = gp->cwd + strlen(gp->cwd) - 1;
 
 				if (*eol == '/' || *eol == '\\')
 					*eol = 0;
 			}
 
-			strcat(gp->current_dir, file);
+			strcat(gp->cwd, file);
 
 			walk = 1;
 		}
 		else {
-			sprintf(gp->tempfile, "%s/%s", gp->current_dir, file);
+			sprintf(gp->tempfile, "%s/%s", gp->cwd, file);
 
 			gpUnifiedFileOpen(gp, gp->tempfile, 1);
 
-			walk = gp->shift_on ? 2 : 0;
+			walk = gp->shift_on ? 3 : 0;
 		}
 	}
 
@@ -920,7 +941,7 @@ gpMakeColumnSelectMenu(gp_t *gp, int dN)
 			}
 			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_FILTER_BITMASK) {
 
-				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %d-%d)",
+				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %i, %i)",
 						gp->pl->data[dN].sub[sN].op.filter.column_1,
 						(int) gp->pl->data[dN].sub[sN].op.filter.arg_1,
 						(int) gp->pl->data[dN].sub[sN].op.filter.arg_2);
@@ -1131,7 +1152,7 @@ gpMakeConfigurationMenu(gp_t *gp)
 
 			if (strlen(sbuf) != 0) {
 
-				strcpy(gp->dirent_names[line_N], sbuf);
+				strcpy(gp->d_names[line_N], sbuf);
 				sprintf(gp->sbuf[0], " %s", sbuf);
 
 				strcpy(la, gp->sbuf[0]);
@@ -1144,16 +1165,16 @@ gpMakeConfigurationMenu(gp_t *gp)
 			}
 		}
 
-		gp->dirent_names[line_N][0] = 0;
+		gp->d_names[line_N][0] = 0;
 
 		strcpy(la, " ...");
 		la += strlen(la) + 1;
 
 		line_N++;
-		gp->dirent_names[line_N][0] = 0;
+		gp->d_names[line_N][0] = 0;
 
 		line_N++;
-		gp->dirent_names[line_N][0] = 0;
+		gp->d_names[line_N][0] = 0;
 
 		fclose(fd);
 	}
@@ -1177,11 +1198,11 @@ gpWriteConfiguration(gp_t *gp)
 		line_N = 0;
 
 		do {
-			if (gp->dirent_names[line_N][0] != 0) {
+			if (gp->d_names[line_N][0] != 0) {
 
-				fprintf(fd, "%s\n", gp->dirent_names[line_N]);
+				fprintf(fd, "%s\n", gp->d_names[line_N]);
 			}
-			else if (gp->dirent_names[line_N + 1][0] == 0)
+			else if (gp->d_names[line_N + 1][0] == 0)
 				break;
 
 			line_N++;
@@ -1193,6 +1214,39 @@ gpWriteConfiguration(gp_t *gp)
 
 		fclose(fd);
 	}
+}
+
+static void
+gpMakeAboutMenu(gp_t *gp)
+{
+	char		*la = gp->la_menu;
+
+	strcpy(la, "Graph Plotter (GP) for numerical data analysis");
+	la += strlen(la) + 1;
+
+	gpTextSepFill(gp->sbuf[0], 54);
+
+	strcpy(la, gp->sbuf[0]);
+	la += strlen(la) + 1;
+
+	strcpy(la, "License: GPLv3");
+	la += strlen(la) + 1;
+
+	strcpy(la, "Build: " __DATE__);
+	la += strlen(la) + 1;
+
+	gpTextSepFill(gp->sbuf[0], 54);
+
+	strcpy(la, gp->sbuf[0]);
+	la += strlen(la) + 1;
+
+	strcpy(la, "[0] https://sourceforge.net/projects/graph-plotter/");
+	la += strlen(la) + 1;
+
+	strcpy(la, "[1] https://github.com/rombrew/gp");
+	la += strlen(la) + 1;
+
+	*la = 0;
 }
 
 static void
@@ -1298,6 +1352,14 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 1:
+				editRaise(ed, 1, gp->la->page_label_edit,
+						rd->page[rd->page_N].title,
+						mu->box_X, mu->box_Y);
+
+				gp->stat = GP_EDIT;
+				break;
+
+			case 2:
 				sprintf(gp->sbuf[0], "%s/g%if%i.png", rd->screenpath,
 						rd->page_N, gp->pl->legend_N);
 
@@ -1323,7 +1385,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				gp->stat = GP_EDIT;
 				break;
 
-			case 2:
+			case 3:
 				if (gp->fullscreen) {
 
 					SDL_SetWindowFullscreen(gp->window, SDL_WINDOW_RESIZABLE);
@@ -1335,13 +1397,13 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				}
 				break;
 
-			case 3:
+			case 4:
 				menuRaise(mu, 103, gp->la->global_appearance_menu,
 						mu->box_X, mu->box_Y);
 
 				mu->mark[0].N = 0;
-				mu->mark[0].subs = (gp->colorscheme == 0) ? "Dark   "
-						:  (gp->colorscheme == 1) ? "Light  " : "Graysca";
+				mu->mark[0].subs = (rd->colorscheme == 0) ? "Dark   "
+						:  (rd->colorscheme == 1) ? "Light  " : "Graysca";
 				mu->mark[1].N = 1;
 				mu->mark[1].subs = (pl->layout_font_ttf == TTF_ID_ROBOTO_MONO_NORMAL) ? "Normal "
 						:  (pl->layout_font_ttf == TTF_ID_ROBOTO_MONO_THIN) ? "Thin   " : "       ";
@@ -1369,13 +1431,13 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				gp->stat = GP_MENU;
 				break;
 
-			case 4:
+			case 5:
 				menuRaise(mu, 102, gp->la->global_data_menu,
 						mu->box_X, mu->box_Y);
 				gp->stat = GP_MENU;
 				break;
 
-			case 5:
+			case 6:
 				gpMakePageMenu(gp);
 
 				if (strlen(gp->la_menu) > 0) {
@@ -1390,7 +1452,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				}
 				break;
 
-			case 6:
+			case 7:
 				gpMakePageMenu(gp);
 
 				if (strlen(gp->la_menu) > 0) {
@@ -1405,7 +1467,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				}
 				break;
 
-			case 7:
+			case 8:
 				gpMakePageMenu(gp);
 
 				if (strlen(gp->la_menu) > 0) {
@@ -1420,15 +1482,15 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				}
 				break;
 
-			case 8:
+			case 9:
 				plotFigureSubtractSwitch(pl, SUBTRACT_BINARY_SUBTRACTION);
 				break;
 
-			case 9:
+			case 10:
 				pl->mark_on = pl->mark_on ? 0 : 1;
 				break;
 
-			case 10:
+			case 11:
 				if (pl->slice_on == 0) {
 
 					pl->slice_on = 1;
@@ -1443,7 +1505,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				}
 				break;
 
-			case 11:
+			case 12:
 				if (pl->axis[PLOT_AXES_MAX - 1].compact != 0) {
 
 					for (N = 0; N < PLOT_AXES_MAX; ++N)
@@ -1455,37 +1517,36 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				}
 				break;
 
-			case 12:
-				if (pl->axis[0].expen != 0) {
+			case 13:
+				if (pl->axis[0].exponential != 0) {
 
 					for (N = 0; N < PLOT_AXES_MAX; ++N)
-						pl->axis[N].expen = 0;
+						pl->axis[N].exponential = 0;
 				}
 				else {
 					for (N = 0; N < PLOT_AXES_MAX; ++N)
-						pl->axis[N].expen = 1;
+						pl->axis[N].exponential = 1;
 				}
 				break;
 
-			case 13:
+			case 14:
 				gp->screen_yank = 1;
 				break;
 
-			case 14:
+			case 15:
 				menuRaise(mu, 104, gp->la->global_lang_menu,
 						mu->box_X, mu->box_Y);
 				gp->stat = GP_MENU;
 				break;
 
-			case 15:
-				editRaise(ed, 1, gp->la->page_title_edit,
-						rd->page[rd->page_N].title,
-						mu->box_X, mu->box_Y);
+			case 16:
+				gpMakeAboutMenu(gp);
 
-				gp->stat = GP_EDIT;
+				menuRaise(mu, 99, gp->la_menu, mu->box_X, mu->box_Y);
+				gp->stat = GP_MENU;
 				break;
 
-			case 16:
+			case 17:
 				gp->done = 1;
 				break;
 		}
@@ -1508,7 +1569,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 3:
-				plotAxisScaleStaked(pl);
+				plotAxisScaleStacked(pl, 0);
 				break;
 		}
 	}
@@ -1519,9 +1580,12 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 			case 0:
 				readDataReload(rd);
 
-				if (gp->shift_on == 0) {
+				if (gp->shift_on != 0) {
 
-					plotAxisScaleLock(pl, 1);
+					plotAxisScaleLock(pl, LOCK_FREE);
+				}
+				else {
+					plotAxisScaleLock(pl, LOCK_AUTO);
 				}
 				break;
 
@@ -1567,6 +1631,20 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 					break;
 
 				case 2:
+					menuResume(mu);
+					gp->stat = GP_MENU;
+					break;
+
+				case 3:
+					for (N = 0; N < MENU_OPTION_MAX; ++N) {
+
+						if (mu->hidden_N[N] < 0) {
+
+							mu->hidden_N[N] = item_N;
+							break;
+						}
+					}
+
 					menuResume(mu);
 					gp->stat = GP_MENU;
 					break;
@@ -1660,6 +1738,14 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 						gp->stat = GP_EDIT;
 					}
+					else {
+						gpMakeDatasetMenu(gp);
+
+						menuResume(mu);
+						menuLayout(mu);
+
+						gp->stat = GP_MENU;
+					}
 					break;
 
 				case 5:
@@ -1740,7 +1826,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 			gp->line_N = item_N - 2;
 
 			editRaise(ed, 10, gp->la_menu,
-					gp->dirent_names[gp->line_N],
+					gp->d_names[gp->line_N],
 					mu->box_X, mu->box_Y);
 
 			gp->stat = GP_EDIT;
@@ -1758,10 +1844,10 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 		switch (item_N) {
 
 			case 0:
-				gp->colorscheme = (gp->colorscheme < 2)
-					? gp->colorscheme + 1 : 0;
+				rd->colorscheme = (rd->colorscheme < 2)
+					? rd->colorscheme + 1 : 0;
 
-				schemeFill(gp->sch, gp->colorscheme);
+				schemeFill(gp->sch, rd->colorscheme);
 				break;
 
 			case 1:
@@ -1798,8 +1884,8 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 		if (mu->clicked != 0 && gp->stat != GP_EDIT) {
 
-			mu->mark[0].subs = (gp->colorscheme == 0) ? "Dark   "
-					:  (gp->colorscheme == 1) ? "Light  " : "Graysca";
+			mu->mark[0].subs = (rd->colorscheme == 0) ? "Dark   "
+					:  (rd->colorscheme == 1) ? "Light  " : "Graysca";
 			mu->mark[1].subs = (pl->layout_font_ttf == TTF_ID_ROBOTO_MONO_NORMAL) ? "Normal "
 					:  (pl->layout_font_ttf == TTF_ID_ROBOTO_MONO_THIN) ? "Thin   " : "       ";
 			mu->mark[2].subs = (dw->antialiasing == DRAW_4X_MSAA)  ? "4x MSAA"
@@ -1824,8 +1910,8 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 		if (item_N != -1) {
 
-			gp->language = item_N;
-			langFill(gp->la, gp->language);
+			rd->language = item_N;
+			langFill(gp->la, rd->language);
 		}
 	}
 	else if (menu_N == 2) {
@@ -1882,11 +1968,11 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 5:
-				pl->axis[gp->ax_N].expen = pl->axis[gp->ax_N].expen ? 0 : 1;
+				pl->axis[gp->ax_N].exponential = pl->axis[gp->ax_N].exponential ? 0 : 1;
 
 				if (mu->clicked != 0) {
 
-					mu->mark[1].subs = (pl->axis[gp->ax_N].expen == 0) ? " " : "X";
+					mu->mark[1].subs = (pl->axis[gp->ax_N].exponential == 0) ? " " : "X";
 
 					menuResume(mu);
 					gp->stat = GP_MENU;
@@ -1894,6 +1980,24 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 6:
+				pl->axis[gp->ax_N].lock_tick = pl->axis[gp->ax_N].lock_tick ? 0 : 1;
+
+				if (pl->axis[gp->ax_N].lock_tick != 0) {
+
+					plotAxisScaleGridLock(pl, gp->ax_N);
+				}
+
+				if (mu->clicked != 0) {
+
+					mu->mark[2].subs = (pl->axis[gp->ax_N].lock_tick == 0) ? " " : "X";
+
+					menuResume(mu);
+					gp->stat = GP_MENU;
+				}
+				break;
+
+
+			case 7:
 				editRaise(ed, 3, gp->la->axis_label_edit,
 						pl->axis[gp->ax_N].label,
 						mu->box_X, mu->box_Y);
@@ -1913,11 +2017,11 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 			case 1:
 				if (pl->axis[gp->ax_N].busy == AXIS_BUSY_X) {
 
-					plotAxisScaleAutoCond(pl, gp->ax_N, pl->on_Y);
+					plotAxisScaleAutoCond(pl, gp->ax_N, -1);
 				}
 				else if (pl->axis[gp->ax_N].busy == AXIS_BUSY_Y) {
 
-					plotAxisScaleAutoCond(pl, gp->ax_N, pl->on_X);
+					plotAxisScaleAutoCond(pl, gp->ax_N, -1);
 				}
 				break;
 
@@ -2197,11 +2301,41 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 1:
-				pl->transparency_mode = pl->transparency_mode ? 0 : 1;
+				gp->fig_N = -1;
+
+				editRaise(ed, 5, gp->la->scale_offset_edit,
+						"1", mu->box_X, mu->box_Y);
+
+				gp->stat = GP_EDIT;
+				break;
+
+			case 2:
+				gp->fig_N = -1;
+
+				editRaise(ed, 6, gp->la->scale_offset_edit,
+						"-1", mu->box_X, mu->box_Y);
+
+				gp->stat = GP_EDIT;
+				break;
+
+			case 3:
+				pl->transparency = pl->transparency ? 0 : 1;
 
 				if (mu->clicked != 0) {
 
-					mu->mark[0].subs = (pl->transparency_mode == 0) ? " " : "X";
+					mu->mark[0].subs = (pl->transparency == 0) ? " " : "X";
+
+					menuResume(mu);
+					gp->stat = GP_MENU;
+				}
+				break;
+
+			case 4:
+				pl->legend_compact = pl->legend_compact ? 0 : 1;
+
+				if (mu->clicked != 0) {
+
+					mu->mark[1].subs = (pl->legend_compact == 0) ? " " : "X";
 
 					menuResume(mu);
 					gp->stat = GP_MENU;
@@ -2242,6 +2376,15 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 			if (gp->shift_on == 1) {
 
+				for (N = 1; N < MENU_OPTION_MAX; ++N) {
+
+					if (mu->hidden_N[N] < 0) {
+
+						mu->hidden_N[N] = item_N;
+						break;
+					}
+				}
+
 				menuResume(mu);
 				gp->stat = GP_MENU;
 			}
@@ -2254,6 +2397,15 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 			readCombinePage(rd, N, 0);
 
 			if (gp->shift_on == 1) {
+
+				for (N = 1; N < MENU_OPTION_MAX; ++N) {
+
+					if (mu->hidden_N[N] < 0) {
+
+						mu->hidden_N[N] = item_N;
+						break;
+					}
+				}
 
 				menuResume(mu);
 				gp->stat = GP_MENU;
@@ -2271,14 +2423,15 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 static void
 gpEditHandle(gp_t *gp, int edit_N, const char *text)
 {
+	scheme_t	*sch = gp->sch;
+	lang_t		*la = gp->la;
 	plot_t		*pl = gp->pl;
 	read_t		*rd = gp->rd;
 	menu_t		*mu = gp->mu;
 	svg_t		*g;
 
-	const char	*ft;
 	double		scale, offset;
-	int		arg_1, arg_2, len, n;
+	int		len, n;
 
 	if (edit_N == 1) {
 
@@ -2304,29 +2457,50 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 	}
 	else if (edit_N == 5 || edit_N == 6) {
 
+		int		fN, axis_1;
+
 		offset = 0.;
 
 		n = sscanf(text, "%le %le", &scale, &offset);
 
 		if (n != 0) {
 
-			plotFigureSubtractScale(pl, gp->fig_N,
-					(edit_N == 5) ? AXIS_BUSY_X : AXIS_BUSY_Y,
-					scale, offset);
+			axis_1 = (edit_N == 5) ? AXIS_BUSY_X : AXIS_BUSY_Y;
+
+			if (gp->fig_N < 0) {
+
+				for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
+
+					if (pl->figure[fN].busy != 0) {
+
+						plotFigureSubtractScale(pl, fN, axis_1,
+								scale, offset);
+					}
+				}
+			}
+			else {
+				plotFigureSubtractScale(pl, gp->fig_N, axis_1, scale, offset);
+			}
 		}
 	}
 	else if (edit_N == 7) {
 
+		const char	*file;
+
 		strcpy(gp->tempfile, text);
 
-		ft = gp->tempfile + strlen(gp->tempfile);
-		while (ft != gp->tempfile && *ft != '.') --ft;
+		file = gp->tempfile + strlen(gp->tempfile);
 
-		if (strcmp(ft, ".png") == 0) {
+		if (strlen(gp->tempfile) > 4) {
+
+			file += - 4;
+		}
+
+		if (strcmp(file, ".png") == 0) {
 
 			gp->screen_take = 1;
 		}
-		else if (strcmp(ft, ".svg") == 0) {
+		else if (strcmp(file, ".svg") == 0) {
 
 			g = (void *) svgOpenNew(gp->tempfile,
 					gp->surface->w, gp->surface->h);
@@ -2339,6 +2513,8 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 		}
 	}
 	else if (edit_N == 8) {
+
+		int		arg_1, arg_2;
 
 		n = sscanf(text, "%d %d", &arg_1, &arg_2);
 
@@ -2353,7 +2529,7 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 	}
 	else if (edit_N == 9) {
 
-		strcpy(gp->current_dir, text);
+		strcpy(gp->cwd, text);
 
 		gpMakeDirMenu(gp);
 
@@ -2362,7 +2538,16 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 	}
 	else if (edit_N == 10) {
 
-		strcpy(gp->dirent_names[gp->line_N], text);
+		sprintf(gp->sbuf[0], "%s\n", text);
+		readConfigIN(rd, gp->sbuf[0], 1);
+
+		gpFontLayout(gp);
+		gpScreenLayout(gp);
+
+		langFill(la, rd->language);
+		schemeFill(sch, rd->colorscheme);
+
+		strcpy(gp->d_names[gp->line_N], text);
 
 		gpWriteConfiguration(gp);
 		gpMakeConfigurationMenu(gp);
@@ -2450,6 +2635,8 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 	}
 	else if (edit_N == 16) {
 
+		int		arg_1, arg_2;
+
 		n = sscanf(text, "%d %d", &arg_1, &arg_2);
 
 		if (n != 0) {
@@ -2466,32 +2653,6 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 }
 
 static void
-gpScreenLayout(gp_t *gp)
-{
-	plot_t		*pl = gp->pl;
-	menu_t		*mu = gp->mu;
-	edit_t		*ed = gp->ed;
-
-	mu->screen.min_x = 0;
-	mu->screen.max_x = gp->surface->w - 1;
-	mu->screen.min_y = 0;
-	mu->screen.max_y = gp->surface->h - 1;
-
-	ed->screen.min_x = 0;
-	ed->screen.max_x = gp->surface->w - 1;
-	ed->screen.min_y = 0;
-	ed->screen.max_y = gp->surface->h - 1;
-
-	pl->screen.min_x = 0;
-	pl->screen.max_x = gp->surface->w - 1;
-	pl->screen.min_y = gp->layout_page_box;
-	pl->screen.max_y = gp->surface->h - 1;
-
-	menuLayout(mu);
-	editLayout(ed);
-}
-
-static void
 gpEventHandle(gp_t *gp, const SDL_Event *ev)
 {
 	plot_t		*pl = gp->pl;
@@ -2499,7 +2660,7 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 	menu_t		*mu = gp->mu;
 	edit_t		*ed = gp->ed;
 
-	double		F;
+	double		fmin, fmax;
 	int		N;
 
 	if (ev->type == SDL_QUIT)
@@ -2595,11 +2756,11 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 				mu->box_X = -1;
 				mu->box_Y = -1;
 
-				gpMenuHandle(gp, 1, 1);
+				gpMenuHandle(gp, 1, 2);
 			}
 			else if (ev->key.keysym.sym == SDLK_f) {
 
-				gpMenuHandle(gp, 1, 2);
+				gpMenuHandle(gp, 1, 3);
 			}
 			else if (ev->key.keysym.sym == SDLK_l) {
 
@@ -2626,21 +2787,21 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 				mu->box_X = -1;
 				mu->box_Y = -1;
 
-				gpMenuHandle(gp, 1, 5);
+				gpMenuHandle(gp, 1, 6);
 			}
 			else if (ev->key.keysym.sym == SDLK_c) {
 
 				mu->box_X = -1;
 				mu->box_Y = -1;
 
-				gpMenuHandle(gp, 1, 6);
+				gpMenuHandle(gp, 1, 7);
 			}
 			else if (ev->key.keysym.sym == SDLK_b) {
 
 				mu->box_X = -1;
 				mu->box_Y = -1;
 
-				gpMenuHandle(gp, 1, 7);
+				gpMenuHandle(gp, 1, 8);
 			}
 			else if (ev->key.keysym.sym == SDLK_s) {
 
@@ -2680,15 +2841,15 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 			}
 			else if (ev->key.keysym.sym == SDLK_r) {
 
-				gpMenuHandle(gp, 1, 8);
+				gpMenuHandle(gp, 1, 9);
 			}
 			else if (ev->key.keysym.sym == SDLK_m) {
 
-				gpMenuHandle(gp, 1, 9);
+				gpMenuHandle(gp, 1, 10);
 			}
 			else if (ev->key.keysym.sym == SDLK_t) {
 
-				gpMenuHandle(gp, 1, 10);
+				gpMenuHandle(gp, 1, 11);
 			}
 			else if (ev->key.keysym.sym == SDLK_k) {
 
@@ -2700,7 +2861,7 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 					gpMenuHandle(gp, 2, 4);
 				}
 				else {
-					gpMenuHandle(gp, 1, 11);
+					gpMenuHandle(gp, 1, 12);
 				}
 			}
 			else if (ev->key.keysym.sym == SDLK_e) {
@@ -2713,12 +2874,12 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 					gpMenuHandle(gp, 2, 5);
 				}
 				else {
-					gpMenuHandle(gp, 1, 12);
+					gpMenuHandle(gp, 1, 13);
 				}
 			}
 			else if (ev->key.keysym.sym == SDLK_y) {
 
-				gpMenuHandle(gp, 1, 13);
+				gpMenuHandle(gp, 1, 14);
 			}
 		}
 		else if (ev->type == SDL_MOUSEBUTTONDOWN) {
@@ -2809,7 +2970,7 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 								gp->cur_X, gp->cur_Y);
 
 #ifndef _WINDOWS
-						mu->hidden_N[0] = 13;
+						mu->hidden_N[0] = 14;
 #endif /* _WINDOWS */
 
 						gp->stat = GP_MENU;
@@ -2837,8 +2998,11 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 						menuRaise(mu, 4, gp->la->legend_menu,
 								gp->cur_X, gp->cur_Y);
 
-						mu->mark[0].N = 1;
-						mu->mark[0].subs = (pl->transparency_mode == 0) ? " " : "X";
+						mu->mark[0].N = 3;
+						mu->mark[0].subs = (pl->transparency == 0) ? " " : "X";
+
+						mu->mark[1].N = 4;
+						mu->mark[1].subs = (pl->legend_compact == 0) ? " " : "X";
 
 						gp->stat = GP_MENU;
 
@@ -2869,7 +3033,9 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 							mu->mark[0].N = 4;
 							mu->mark[0].subs = (pl->axis[N].compact == 0) ? " " : "X";
 							mu->mark[1].N = 5;
-							mu->mark[1].subs = (pl->axis[N].expen == 0) ? " " : "X";
+							mu->mark[1].subs = (pl->axis[N].exponential == 0) ? " " : "X";
+							mu->mark[2].N = 6;
+							mu->mark[2].subs = (pl->axis[N].lock_tick == 0) ? " " : "X";
 
 							gp->stat = GP_MENU;
 
@@ -2887,7 +3053,9 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 							mu->mark[0].N = 4;
 							mu->mark[0].subs = (pl->axis[N].compact == 0) ? " " : "X";
 							mu->mark[1].N = 5;
-							mu->mark[1].subs = (pl->axis[N].expen == 0) ? " " : "X";
+							mu->mark[1].subs = (pl->axis[N].exponential == 0) ? " " : "X";
+							mu->mark[2].N = 6;
+							mu->mark[2].subs = (pl->axis[N].lock_tick == 0) ? " " : "X";
 
 							gp->stat = GP_MENU;
 
@@ -2913,11 +3081,11 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 		else if (ev->type == SDL_MOUSEWHEEL) {
 
 			if (ev->wheel.y > 0)
-				F = 1.1;
+				fmin = 1.1;
 			else if (ev->wheel.y < 0)
-				F = 1. / 1.1;
+				fmin = 1. / 1.1;
 			else
-				F = 1.;
+				fmin = 1.;
 
 			SDL_GetMouseState(&gp->cur_X, &gp->cur_Y);
 			N = plotAxisGetByClick(pl, gp->cur_X, gp->cur_Y);
@@ -2926,16 +3094,16 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 
 				if (pl->axis[N].busy == AXIS_BUSY_X) {
 
-					plotAxisScaleZoom(pl, N, gp->cur_X, F);
+					plotAxisScaleZoom(pl, N, gp->cur_X, fmin);
 				}
 				else if (pl->axis[N].busy == AXIS_BUSY_Y) {
 
-					plotAxisScaleZoom(pl, N, gp->cur_Y, F);
+					plotAxisScaleZoom(pl, N, gp->cur_Y, fmin);
 				}
 			}
 			else {
-				plotAxisScaleZoom(pl, pl->on_X, gp->cur_X, F);
-				plotAxisScaleZoom(pl, pl->on_Y, gp->cur_Y, F);
+				plotAxisScaleZoom(pl, pl->on_X, gp->cur_X, fmin);
+				plotAxisScaleZoom(pl, pl->on_Y, gp->cur_Y, fmin);
 			}
 		}
 		else if (ev->type == SDL_MOUSEMOTION) {
@@ -3066,9 +3234,10 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 
 					if (abs(gp->box_X - gp->cur_X) >= abs(gp->box_Y - gp->cur_Y)) {
 
-						plotAxisScaleManual(pl, pl->on_X,
-								plotAxisConvInv(pl, pl->on_X, gp->box_X),
-								plotAxisConvInv(pl, pl->on_X, gp->cur_X));
+						fmin = plotAxisConvBackward(pl, pl->on_X, gp->box_X);
+						fmax = plotAxisConvBackward(pl, pl->on_X, gp->cur_X);
+
+						plotAxisScaleManual(pl, pl->on_X, fmin, fmax);
 
 						if (gp->shift_on == 0) {
 
@@ -3076,9 +3245,10 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 						}
 					}
 					else {
-						plotAxisScaleManual(pl, pl->on_Y,
-								plotAxisConvInv(pl, pl->on_Y, gp->box_Y),
-								plotAxisConvInv(pl, pl->on_Y, gp->cur_Y));
+						fmin = plotAxisConvBackward(pl, pl->on_Y, gp->box_Y);
+						fmax = plotAxisConvBackward(pl, pl->on_Y, gp->cur_Y);
+
+						plotAxisScaleManual(pl, pl->on_Y, fmin, fmax);
 
 						if (gp->shift_on == 0) {
 
@@ -3086,8 +3256,8 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 						}
 					}
 
-					pl->axis[pl->on_X].lock_scale = 0;
-					pl->axis[pl->on_Y].lock_scale = 0;
+					pl->axis[pl->on_X].lock_scale = LOCK_FREE;
+					pl->axis[pl->on_Y].lock_scale = LOCK_FREE;
 				}
 
 				gp->stat = GP_IDLE;
@@ -3131,16 +3301,18 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 						gp->cur_Y = N;
 					}
 
-					plotAxisScaleManual(pl, pl->on_X,
-							plotAxisConvInv(pl, pl->on_X, gp->box_X),
-							plotAxisConvInv(pl, pl->on_X, gp->cur_X));
+					fmin = plotAxisConvBackward(pl, pl->on_X, gp->box_X);
+					fmax = plotAxisConvBackward(pl, pl->on_X, gp->cur_X);
 
-					plotAxisScaleManual(pl, pl->on_Y,
-							plotAxisConvInv(pl, pl->on_Y, gp->box_Y),
-							plotAxisConvInv(pl, pl->on_Y, gp->cur_Y));
+					plotAxisScaleManual(pl, pl->on_X, fmin, fmax);
 
-					pl->axis[pl->on_X].lock_scale = 0;
-					pl->axis[pl->on_Y].lock_scale = 0;
+					fmin = plotAxisConvBackward(pl, pl->on_Y, gp->box_Y);
+					fmax = plotAxisConvBackward(pl, pl->on_Y, gp->cur_Y);
+
+					plotAxisScaleManual(pl, pl->on_Y, fmin, fmax);
+
+					pl->axis[pl->on_X].lock_scale = LOCK_FREE;
+					pl->axis[pl->on_Y].lock_scale = LOCK_FREE;
 				}
 				else {
 					gpMenuHandle(gp, 101, 0);
@@ -3486,7 +3658,7 @@ gpFPSUpdate(gp_t *gp)
 
 gp_t *gp_Alloc()
 {
-	gp_t	*gp;
+	gp_t		*gp;
 	scheme_t	*sch;
 	lang_t		*la;
 	draw_t		*dw;
@@ -3506,10 +3678,14 @@ gp_t *gp_Alloc()
 	dw = (draw_t *) calloc(1, sizeof(draw_t));
 	gp->dw = dw;
 
+	dw->antialiasing = DRAW_4X_MSAA;
+	dw->solidfont = 0;
+	dw->thickness = 1;
+
 	pl = plotAlloc(dw, sch);
 	gp->pl = pl;
 
-	rd = readAlloc(pl);
+	rd = readAlloc(dw, pl);
 	gp->rd = rd;
 
 	mu = menuAlloc(dw, sch);
@@ -3517,6 +3693,11 @@ gp_t *gp_Alloc()
 
 	ed = editAlloc(dw, sch);
 	gp->ed = ed;
+
+	gp->hinting = 2;
+
+	gp->cwd[0] = '.';
+	gp->cwd[1] = 0;
 
 	gpFileGetPath(gp);
 
@@ -3544,11 +3725,17 @@ gp_t *gp_Alloc()
 				readConfigGP(rd, gp->rcfile, 0);
 			}
 		}
+
+		if (rd->config_version < GP_CONFIG_VERSION) {
+
+			gpDefaultFile(gp);
+
+			if (gpFileExist(gp->rcfile) != 0) {
+
+				readConfigGP(rd, gp->rcfile, 0);
+			}
+		}
 	}
-
-	gp->hinting = 2;
-
-	strcpy(gp->current_dir, ".");
 
 	return gp;
 }
@@ -3593,7 +3780,6 @@ int gp_OpenWindow(gp_t *gp)
 {
 	scheme_t	*sch = gp->sch;
 	lang_t		*la = gp->la;
-	draw_t		*dw = gp->dw;
 	read_t		*rd = gp->rd;
 
 	if (gp->window_ID != 0) {
@@ -3636,23 +3822,16 @@ int gp_OpenWindow(gp_t *gp)
 		ERROR("SDL_CreateRGBSurfaceWithFormat: %s\n", SDL_GetError());
 	}
 
+	gpFontHinting(gp);
+
 	gpFontLayout(gp);
 	gpScreenLayout(gp);
 
 	gp->stat = GP_IDLE;
 	gp->active = 1;
 
-	gp->colorscheme = rd->colorscheme;
-	gp->language = rd->language;
-
-	dw->antialiasing = rd->antialiasing;
-	dw->solidfont = rd->solidfont;
-	dw->thickness = rd->thickness;
-
-	gpFontHinting(gp);
-
-	langFill(la, gp->language);
-	schemeFill(sch, gp->colorscheme);
+	langFill(la, rd->language);
+	schemeFill(sch, rd->colorscheme);
 
 	readSelectPage(rd, 1);
 
@@ -3693,7 +3872,7 @@ int gp_Draw(gp_t *gp)
 		}
 	}
 	else {
-		plotAxisScaleLock(pl, 0);
+		plotAxisScaleLock(pl, LOCK_FREE);
 	}
 
 	if (gp->i_show_fps != 0) {

@@ -25,6 +25,7 @@
 #include <SDL2/SDL.h>
 
 #include "async.h"
+#include "draw.h"
 #include "plot.h"
 
 #define READ_PAGE_MAX		1000
@@ -35,6 +36,8 @@
 
 #define GP_MIN_SIZE_X		640
 #define GP_MIN_SIZE_Y		480
+
+#define GP_CONFIG_VERSION	5
 
 enum {
 	FORMAT_NONE			= 0,
@@ -132,17 +135,16 @@ parse_t;
 
 typedef struct {
 
+	draw_t		*dw;
 	plot_t		*pl;
 
 	char		screenpath[READ_FILE_PATH_MAX];
 
+	int		config_version;
 	int		window_size_x;
 	int		window_size_y;
 	int		language;
 	int		colorscheme;
-	int		antialiasing;
-	int		solidfont;
-	int		thickness;
 	int		timecol;
 	int		shortfilename;
 
@@ -189,7 +191,7 @@ typedef struct {
 }
 read_t;
 
-read_t *readAlloc(plot_t *pl);
+read_t *readAlloc(draw_t *dw, plot_t *pl);
 void readClean(read_t *rd);
 void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int fmt);
 void readToggleHint(read_t *rd, int dN, int cN);

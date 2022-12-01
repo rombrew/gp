@@ -25,6 +25,7 @@ void langFill(lang_t *la, int lang)
 		la->global_menu =
 
 			"    Zoom ...\0"
+			"    Edit page label ...\0"
 			"P   Take a screenshot\0"
 			"F   Fullscreen mode toggle\0"
 			"    Appearance ...\0"
@@ -39,7 +40,7 @@ void langFill(lang_t *la, int lang)
 			"E   Exponential mode\0"
 			"Y   Yank to clipboard\0"
 			"    Language ...\0"
-			"    Page title ...\0"
+			"    About ...\0"
 			"    Quit\0"
 
 			"\0";
@@ -49,7 +50,7 @@ void langFill(lang_t *la, int lang)
 			"A   Auto fit to page\0"
 			"Q   Equal scales\0"
 			"G   Grid align\0"
-			"W   Staked (on Y)\0"
+			"W   Stacked on Y\0"
 
 			"\0";
 
@@ -89,6 +90,7 @@ void langFill(lang_t *la, int lang)
 			"T   Data slice\0"
 			"K   Compact mode      [ %s ]\0"
 			"E   Exponential mode  [ %s ]\0"
+			"    Ticks lock        [ %s ]\0"
 			"    Label ...\0"
 
 			"\0";
@@ -140,17 +142,17 @@ void langFill(lang_t *la, int lang)
 
 			"\0";
 
-		la->figure_operation_menu = 
+		la->figure_operation_menu =
 
 			"    Duplicate figure\0"
 			"    Time unwrap\0"
-			"    Scale (on X) ...\0"
-			"    Scale (on Y) ...\0"
+			"    Scale on X ...\0"
+			"    Scale on Y ...\0"
 			"R   Add B subtraction\0"
 			"    Add B addition\0"
 			"    Add B multiplication\0"
 			"    Add B hypotenuse\0"
-			"    Add F sequential difference\0"
+			"    Add F differences\0"
 			"    Add F cumulative sum\0"
 			"    Add F bit field ...\0"
 			"    Add F low pass ...\0"
@@ -161,7 +163,10 @@ void langFill(lang_t *la, int lang)
 		la->legend_menu =
 
 			"    Drawing primitive ...\0"
+			"    Scale on X ...\0"
+			"    Scale on Y ...\0"
 			"    Transparency mode   [ %s ]\0"
+			"    Compact legend      [ %s ]\0"
 
 			"\0";
 
@@ -172,7 +177,7 @@ void langFill(lang_t *la, int lang)
 
 			"\0";
 
-		la->page_title_edit = "Page Title";
+		la->page_label_edit = "Page Label";
 		la->figure_label_edit = "Figure Label";
 		la->axis_label_edit = "Axis Label";
 		la->scale_offset_edit = "Scale and offset";
@@ -189,6 +194,7 @@ void langFill(lang_t *la, int lang)
 		la->global_menu =
 
 			"    Масштаб ...\0"
+			"    Изменить текст заголовка ...\0"
 			"P   Сделать снимок\0"
 			"F   Режим полного экрана\0"
 			"    Внешний вид ...\0"
@@ -203,7 +209,7 @@ void langFill(lang_t *la, int lang)
 			"E   Экспонентный режим\0"
 			"Y   Копировать в буфер\0"
 			"    Язык ...\0"
-			"    Текст заголовка ...\0"
+			"    О программе ...\0"
 			"    Выход\0"
 
 			"\0";
@@ -213,7 +219,7 @@ void langFill(lang_t *la, int lang)
 			"A   Автоматически на всю страницу\0"
 			"Q   Одинаковый масштаб по осям\0"
 			"G   Выравнивание сетки\0"
-			"W   Укладка (по Y)\0"
+			"W   Укладка стопкой по Y\0"
 
 			"\0";
 
@@ -253,6 +259,7 @@ void langFill(lang_t *la, int lang)
 			"T   Нарезка данных\0"
 			"K   Компактный режим    [ %s ]\0"
 			"E   Экспонентный режим  [ %s ]\0"
+			"    Блокировка линейки  [ %s ]\0"
 			"    Текст ...\0"
 
 			"\0";
@@ -308,14 +315,14 @@ void langFill(lang_t *la, int lang)
 
 			"    Дублировать фигуру\0"
 			"    Развернуть время\0"
-			"    Масштаб (по X) ...\0"
-			"    Масштаб (по Y) ...\0"
+			"    Масштаб по X ...\0"
+			"    Масштаб по Y ...\0"
 			"R   Добавить B вычитание\0"
 			"    Добавить B сложение\0"
 			"    Добавить B умножение\0"
-			"    Добавить B гипотенузу\0"
-			"    Добавить F последовательные разности\0"
-			"    Добавить F накопленные суммы\0"
+			"    Добавить B гипотенуза\0"
+			"    Добавить F разности\0"
+			"    Добавить F накопленная сумма\0"
 			"    Добавить F битовое поле ...\0"
 			"    Добавить F фильтр НЧ ...\0"
 			"    Добавить P полином ...\0"
@@ -325,7 +332,10 @@ void langFill(lang_t *la, int lang)
 		la->legend_menu =
 
 			"    Примитив рисования ...\0"
+			"    Масштаб по X ...\0"
+			"    Масштаб по Y ...\0"
 			"    Режим прозрачности   [ %s ]\0"
+			"    Компактная легенда   [ %s ]\0"
 
 			"\0";
 
@@ -336,7 +346,7 @@ void langFill(lang_t *la, int lang)
 
 			"\0";
 
-		la->page_title_edit = "Текст Заголовка";
+		la->page_label_edit = "Текст Заголовка";
 		la->figure_label_edit = "Текст Фигуры";
 		la->axis_label_edit = "Текст Оси";
 		la->scale_offset_edit = "Масштаб и смещение";

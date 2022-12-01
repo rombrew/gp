@@ -37,12 +37,12 @@ chunk 4096
 
 # How long to wait (in milliseconds) for the new data in regular files.
 #
-timeout 10000
+timeout 1000
 
 # Data length (number of lines to allocate) that is applied by default to
 # non-regular files like serial ports.
 #
-length 10000
+length 1000
 
 # Specify the window size at the startup.
 #
@@ -78,6 +78,10 @@ drawing line 2
 # How to print filenames in UI (0 = full length, <n> = cut to \n dirs in path).
 #
 shortfilename 1
+
+# Interpolation method when resampling is necessary (0 = nearest, 1 = linear).
+#
+interpolation 1
 
 # Define the number of significant digits in numerical printouts.
 #

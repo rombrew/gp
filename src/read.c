@@ -28,6 +28,7 @@
 #endif /* _WINDOWS */
 
 #include "async.h"
+#include "draw.h"
 #include "dirent.h"
 #include "lang.h"
 #include "plot.h"
@@ -191,21 +192,19 @@ stod(const markup_t *mk, double *x, char *s)
 	return s;
 }
 
-read_t *readAlloc(plot_t *pl)
+read_t *readAlloc(draw_t *dw, plot_t *pl)
 {
 	read_t		*rd;
 
 	rd = calloc(1, sizeof(read_t));
 
+	rd->dw = dw;
 	rd->pl = pl;
 
 	strcpy(rd->screenpath, ".");
 
 	rd->window_size_x = GP_MIN_SIZE_X;
 	rd->window_size_y = GP_MIN_SIZE_Y;
-	rd->antialiasing = DRAW_4X_MSAA;
-	rd->solidfont = 0;
-	rd->thickness = 1;
 	rd->timecol = -1;
 	rd->shortfilename = 0;
 
@@ -223,8 +222,8 @@ read_t *readAlloc(plot_t *pl)
 
 	rd->preload = 8388608;
 	rd->chunk = 4096;
-	rd->timeout = 10000;
-	rd->length_N = 10000;
+	rd->timeout = 1000;
+	rd->length_N = 1000;
 
 	rd->bind_N = -1;
 	rd->page_N = -1;
@@ -1016,7 +1015,7 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 		readClose(rd, dN);
 	}
 
-	if (		strcmp(file, "STDIN") == 0
+	if (		strcmp(file, "stdin") == 0
 			&& fmt == FORMAT_PLAIN_TEXT) {
 
 		fd = stdin;
@@ -1558,6 +1557,27 @@ configParseFSM(read_t *rd, parse_t *pa)
 					failed = 1;
 				}
 			}
+			else if (strcmp(tbuf, "gpversion") == 0) {
+
+				failed = 1;
+
+				do {
+					r = configToken(rd, pa);
+
+					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
+					else break;
+
+					if (argi[0] > 0) {
+
+						failed = 0;
+						rd->config_version = argi[0];
+					}
+					else {
+						sprintf(msg_tbuf, "unknown config version %i", argi[0]);
+					}
+				}
+				while (0);
+			}
 			else if (strcmp(tbuf, "font") == 0) {
 
 				failed = 1;
@@ -1831,7 +1851,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 					if (argi[0] >= 0 && argi[0] < 3) {
 
 						failed = 0;
-						rd->antialiasing = argi[0];
+						rd->dw->antialiasing = argi[0];
 					}
 					else {
 						sprintf(msg_tbuf, "invalid antialiasing %i", argi[0]);
@@ -1852,7 +1872,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 					if (argi[0] >= 0 && argi[0] <= 1) {
 
 						failed = 0;
-						rd->solidfont = argi[0];
+						rd->dw->solidfont = argi[0];
 					}
 					else {
 						sprintf(msg_tbuf, "invalid solidfont %i", argi[0]);
@@ -1873,7 +1893,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 					if (argi[0] >= 0 && argi[0] < 3) {
 
 						failed = 0;
-						rd->thickness = argi[0];
+						rd->dw->thickness = argi[0];
 					}
 					else {
 						sprintf(msg_tbuf, "invalid thickness %i", argi[0]);
@@ -1919,6 +1939,27 @@ configParseFSM(read_t *rd, parse_t *pa)
 					}
 					else {
 						sprintf(msg_tbuf, "invalid number of dirs %i", argi[0]);
+					}
+				}
+				while (0);
+			}
+			else if (strcmp(tbuf, "interpolation") == 0) {
+
+				failed = 1;
+
+				do {
+					r = configToken(rd, pa);
+
+					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
+					else break;
+
+					if (argi[0] >= 0 && argi[0] <= 1) {
+
+						failed = 0;
+						rd->pl->interpolation = argi[0];
+					}
+					else {
+						sprintf(msg_tbuf, "invalid interpolation %i", argi[0]);
 					}
 				}
 				while (0);
@@ -2609,7 +2650,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 			else {
 				failed = 1;
 
-				sprintf(msg_tbuf, "unknown tokens \"%.80s\"", tbuf);
+				sprintf(msg_tbuf, "unknown token \"%.80s\"", tbuf);
 			}
 
 			if (failed) {
@@ -2619,7 +2660,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 		}
 		else if (r == 0 && pa->newline == 0) {
 
-			sprintf(msg_tbuf, "extra tokens \"%.80s\"", tbuf);
+			sprintf(msg_tbuf, "extra token \"%.80s\"", tbuf);
 
 			ERROR("%s:%i: %s\n", pa->file, pa->line_N, msg_tbuf);
 		}
@@ -2632,7 +2673,7 @@ void readConfigIN(read_t *rd, const char *config, int fromUI)
 	parse_t		pa;
 	int		pN;
 
-	strcpy(pa.file, "<inline>");
+	strcpy(pa.file, "inline");
 
 	pa.path = NULL;
 	pa.fd = NULL;
@@ -2726,7 +2767,7 @@ void readConfigVerify(read_t *rd)
 {
 	if (rd->pl->font == NULL) {
 
-		plotFontDefault(rd->pl, TTF_ID_ROBOTO_MONO_NORMAL, 26, TTF_STYLE_NORMAL);
+		plotFontDefault(rd->pl, TTF_ID_ROBOTO_MONO_NORMAL, 24, TTF_STYLE_NORMAL);
 	}
 
 	rd->page_N = -1;

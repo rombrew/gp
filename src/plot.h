@@ -73,6 +73,12 @@ enum {
 };
 
 enum {
+	LOCK_FREE			= 0,
+	LOCK_AUTO,
+	LOCK_STACKED
+};
+
+enum {
 	FIGURE_DRAWING_LINE		= 0,
 	FIGURE_DRAWING_DASH,
 	FIGURE_DRAWING_DOT
@@ -120,8 +126,9 @@ typedef struct {
 
 		int		chunk_SHIFT;
 		int		chunk_MASK;
-
 		int		chunk_bSIZE;
+
+		int		lz4_compress;
 
 		struct {
 
@@ -249,7 +256,9 @@ typedef struct {
 	struct {
 
 		int		busy;
+
 		int		lock_scale;
+		int		lock_tick;
 
 		int		slave;
 		int		slave_N;
@@ -260,11 +269,14 @@ typedef struct {
 		char		label[PLOT_STRING_MAX];
 
 		int		compact;
-		int		expen;
+		int		exponential;
 
-		int		_pos;
-		double		_tih;
-		double		_tis;
+		int		layout_pos;
+
+		double		ruler_tih;
+		double		ruler_tis;
+		double		ruler_min;
+		double		ruler_max;
 	}
 	axis[PLOT_AXES_MAX];
 
@@ -318,6 +330,7 @@ typedef struct {
 	int			rcache_wipe_data_N;
 	int			rcache_wipe_chunk_N;
 
+	int			legend_compact;
 	int			legend_X;
 	int			legend_Y;
 	int			legend_size_X;
@@ -400,10 +413,12 @@ typedef struct {
 	int			mark_on;
 	int			mark_N;
 
+	int			interpolation;
+
 	int			default_drawing;
 	int			default_width;
 
-	int			transparency_mode;
+	int			transparency;
 	int			fprecision;
 	int			lz4_compress;
 
@@ -437,19 +452,20 @@ int plotDataRangeCacheFetch(plot_t *pl, int dN, int cN);
 
 void plotAxisLabel(plot_t *pl, int aN, const char *label);
 void plotAxisScaleManual(plot_t *pl, int aN, double min, double max);
-void plotAxisScaleAutoCond(plot_t *pl, int aN, int bN);
-void plotAxisScaleLock(plot_t *pl, int lock);
 void plotAxisScaleAuto(plot_t *pl, int aN);
+void plotAxisScaleAutoCond(plot_t *pl, int aN, int bN);
+void plotAxisScaleLock(plot_t *pl, int knob);
 void plotAxisScaleDefault(plot_t *pl);
 void plotAxisScaleZoom(plot_t *pl, int aN, int origin, double zoom);
 void plotAxisScaleMove(plot_t *pl, int aN, int move);
 void plotAxisScaleEqual(plot_t *pl);
 void plotAxisScaleGridAlign(plot_t *pl);
-void plotAxisScaleStaked(plot_t *pl);
+void plotAxisScaleGridLock(plot_t *pl, int aN);
+void plotAxisScaleStacked(plot_t *pl, int bN);
 
 int plotAxisGetByClick(plot_t *pl, int cur_X, int cur_Y);
-double plotAxisConv(plot_t *pl, int aN, double fval);
-double plotAxisConvInv(plot_t *pl, int aN, double px);
+double plotAxisConvForward(plot_t *pl, int aN, double fval);
+double plotAxisConvBackward(plot_t *pl, int aN, double xval);
 void plotAxisSlave(plot_t *pl, int aN, int bN, double scale, double offset, int action);
 void plotAxisRemove(plot_t *pl, int aN);
 

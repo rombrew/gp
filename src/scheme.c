@@ -39,7 +39,7 @@ void schemeFill(scheme_t *sch, int nu)
 		sch->plot_text = 0xFFFFFF;
 		sch->plot_hidden = 0x111119;
 
-		sch->menu_background = 0x27272E;
+		sch->menu_background = 0x37373F;
 		sch->menu_hovered = 0x777788;
 		sch->menu_scrollbar = 0xBBBBCC;
 		sch->menu_item_text = 0xFFFFFF;

@@ -38,7 +38,7 @@ typedef struct {
 	const char	*legend_menu;
 	const char	*cancel_menu;
 
-	const char	*page_title_edit;
+	const char	*page_label_edit;
 	const char	*figure_label_edit;
 	const char	*axis_label_edit;
 	const char	*scale_offset_edit;
