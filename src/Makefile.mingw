@@ -12,7 +12,7 @@ STRIP	= $(CROSS)-strip -s
 MK	= mkdir -p
 RM      = rm -rf
 
-CFLAGS  = -std=gnu99 -pipe -Wall -O3 -flto -g1
+CFLAGS  = -std=gnu99 -pipe -Wall -O3 -flto=auto -g1
 CFLAGS  += -fno-stack-protector
 CFLAGS  += -I$(SDLDIR)/include -I$(SDLDIR)/include/SDL2
 CFLAGS  += -D_WINDOWS

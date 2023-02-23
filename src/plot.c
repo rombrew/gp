@@ -1,6 +1,6 @@
 /*
    Graph Plotter for numerical data analysis.
-   Copyright (C) 2022 Roman Belov <romblv@gmail.com>
+   Copyright (C) 2023 Roman Belov <romblv@gmail.com>
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -852,7 +852,7 @@ plotDataPolyfit(plot_t *pl, int dN, int cN_X, int cN_Y,
 	double		fval_X, fval_Y, fvec[LSE_FULL_MAX];
 	int		N, xN, yN, kN, rN, id_N, job;
 
-	lse_initiate(&pl->lsq, LSE_CASCADE_MAX, poly_N2 - poly_N1 + 1, 1);
+	lse_construct(&pl->lsq, LSE_CASCADE_MAX, poly_N2 - poly_N1 + 1, 1);
 
 	xN = plotDataRangeCacheFetch(pl, dN, cN_X);
 	yN = plotDataRangeCacheFetch(pl, dN, cN_Y);
@@ -947,7 +947,8 @@ plotDataPolyfit(plot_t *pl, int dN, int cN_X, int cN_Y,
 	}
 	while (1);
 
-	lse_finalise(&pl->lsq);
+	lse_solve(&pl->lsq);
+	lse_std(&pl->lsq);
 }
 
 void plotDataSubtract(plot_t *pl, int dN, int sN)
@@ -2061,6 +2062,8 @@ void plotAxisLabel(plot_t *pl, int aN, const char *label)
 	if (label[0] != 0) {
 
 		strcpy(pl->axis[aN].label, label);
+
+		pl->axis[aN].compact = (strlen(pl->axis[aN].label) >= 3) ? 0 : 1;
 	}
 }
 
@@ -2991,7 +2994,7 @@ void plotAxisRemove(plot_t *pl, int aN)
 	pl->axis[aN].busy = AXIS_FREE;
 	pl->axis[aN].slave = 0;
 	pl->axis[aN].label[0] = 0;
-	pl->axis[aN].compact = 0;
+	pl->axis[aN].compact = 1;
 	pl->axis[aN].exponential = 0;
 }
 
@@ -3064,12 +3067,14 @@ void plotFigureAdd(plot_t *pl, int fN, int dN, int nX, int nY, int aX, int aY, c
 
 		pl->axis[aX].busy = AXIS_BUSY_X;
 		pl->axis[aX].lock_scale = LOCK_AUTO;
+		pl->axis[aX].compact = 1;
 	}
 
 	if (pl->axis[aY].busy == AXIS_FREE) {
 
 		pl->axis[aY].busy = AXIS_BUSY_Y;
 		pl->axis[aY].lock_scale = LOCK_AUTO;
+		pl->axis[aY].compact = 1;
 	}
 
 	gN = pl->data[dN].map[nX];
@@ -4238,10 +4243,10 @@ void plotFigureSubtractPolyfit(plot_t *pl, int fN_1, int poly_N1, int poly_N2)
 
 	for (N = 0; N < poly_N2 - poly_N1 + 1; ++N) {
 
-		pl->data[dN].sub[sN].op.polyfit.coefs[N] = pl->lsq.b[N];
+		pl->data[dN].sub[sN].op.polyfit.coefs[N] = pl->lsq.sol.m[N];
 	}
 
-	pl->data[dN].sub[sN].op.polyfit.std = pl->lsq.e[0];
+	pl->data[dN].sub[sN].op.polyfit.std = pl->lsq.std.m[0];
 
 	plotDataSubtract(pl, dN, sN);
 
@@ -4261,22 +4266,22 @@ void plotFigureSubtractPolyfit(plot_t *pl, int fN_1, int poly_N1, int poly_N2)
 
 void plotFigureClean(plot_t *pl)
 {
-	int		fN;
+	int		N;
 
-	for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
+	for (N = 0; N < PLOT_FIGURE_MAX; ++N) {
 
-		pl->figure[fN].busy = 0;
-		pl->figure[fN].hidden = 0;
-		pl->figure[fN].label[0] = 0;
+		pl->figure[N].busy = 0;
+		pl->figure[N].hidden = 0;
+		pl->figure[N].label[0] = 0;
 	}
 
-	for (fN = 0; fN < PLOT_AXES_MAX; ++fN) {
+	for (N = 0; N < PLOT_AXES_MAX; ++N) {
 
-		pl->axis[fN].busy = AXIS_FREE;
-		pl->axis[fN].slave = 0;
-		pl->axis[fN].label[0] = 0;
-		pl->axis[fN].compact = 0;
-		pl->axis[fN].exponential = 0;
+		pl->axis[N].busy = AXIS_FREE;
+		pl->axis[N].slave = 0;
+		pl->axis[N].label[0] = 0;
+		pl->axis[N].compact = 1;
+		pl->axis[N].exponential = 0;
 	}
 
 	pl->legend_X = 0;

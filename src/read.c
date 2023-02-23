@@ -1,6 +1,6 @@
 /*
    Graph Plotter for numerical data analysis.
-   Copyright (C) 2022 Roman Belov <romblv@gmail.com>
+   Copyright (C) 2023 Roman Belov <romblv@gmail.com>
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -913,7 +913,35 @@ follow_fgets(char *s, int len, FILE *fd, int timeout)
 }
 
 static int
-TEXT_GetCN(read_t *rd, int dN, FILE *fd, fval_t *rbuf)
+TEXT_WipeBOM(read_t *rd, int dN)
+{
+	char		*tbuf = rd->data[dN].buf;
+	int		nBOM = 1;
+
+	if (		   memcmp(tbuf, "\x00\x00\xFE\xFF", 4) == 0
+			|| memcmp(tbuf, "\xFF\xFE\x00\x00", 4) == 0) {
+
+		ERROR("UTF-32 signature detected\n");
+		nBOM = 0;
+	}
+	else if (	   memcmp(tbuf, "\xFE\xFF", 2) == 0
+			|| memcmp(tbuf, "\xFF\xFE", 2) == 0) {
+
+		ERROR("UTF-16 signature detected\n");
+		nBOM = 0;
+	}
+	else if (memcmp(tbuf, "\xEF\xBB\xBF", 3) == 0) {
+
+		/* Wipe UTF-8 BOM.
+		 * */
+		memcpy(tbuf, "   ", 3);
+	}
+
+	return nBOM;
+}
+
+static int
+TEXT_GetCN(read_t *rd, int dN, FILE *fd, fval_t *rbuf, int *rbuf_N)
 {
 	int		label_cN, fixed_N, total_N;
 	int		N, cN, timeout;
@@ -934,6 +962,15 @@ TEXT_GetCN(read_t *rd, int dN, FILE *fd, fval_t *rbuf)
 
 		if (r == NULL)
 			break;
+
+		if (total_N == 1) {
+
+			if (TEXT_WipeBOM(rd, dN) == 0) {
+
+				cN = 0;
+				break;
+			}
+		}
 
 		if (label_cN < 1) {
 
@@ -972,6 +1009,8 @@ TEXT_GetCN(read_t *rd, int dN, FILE *fd, fval_t *rbuf)
 	}
 	while (1);
 
+	*rbuf_N = fixed_N;
+
 	return cN;
 }
 
@@ -1007,6 +1046,8 @@ readClose(read_t *rd, int dN)
 void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int fmt)
 {
 	fval_t		rbuf[READ_COLUMN_MAX * 3];
+	int		N, rbuf_N;
+
 	FILE		*fd;
 	ulen_t		sF = 0U;
 
@@ -1038,7 +1079,7 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 
 		if (fmt == FORMAT_PLAIN_TEXT) {
 
-			cN = TEXT_GetCN(rd, dN, fd, rbuf);
+			cN = TEXT_GetCN(rd, dN, fd, rbuf, &rbuf_N);
 
 			if (cN < 1) {
 
@@ -1092,9 +1133,10 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 
 		if (fmt == FORMAT_PLAIN_TEXT) {
 
-			plotDataInsert(rd->pl, dN, rbuf + READ_COLUMN_MAX * 0);
-			plotDataInsert(rd->pl, dN, rbuf + READ_COLUMN_MAX * 1);
-			plotDataInsert(rd->pl, dN, rbuf + READ_COLUMN_MAX * 2);
+			for (N = 0; N < rbuf_N; ++N) {
+
+				plotDataInsert(rd->pl, dN, rbuf + READ_COLUMN_MAX * N);
+			}
 		}
 
 		rd->data[dN].format = fmt;
@@ -1557,7 +1599,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 					failed = 1;
 				}
 			}
-			else if (strcmp(tbuf, "gpversion") == 0) {
+			else if (strcmp(tbuf, "gpconfig") == 0) {
 
 				failed = 1;
 
@@ -2817,6 +2859,12 @@ void readMakePages(read_t *rd, int dN, int cX, int fromUI)
 	cX = (cX < -1) ? rd->timecol : cX;
 	pN = rd->page_N;
 
+	if (cX < -1 || cX >= rd->pl->data[dN].column_N + PLOT_SUBTRACT) {
+
+		ERROR("Time column number %i is out of range\n", cX);
+		return ;
+	}
+
 	for (N = 0; N < rd->data[dN].column_N; ++N) {
 
 		if (pN < 0) {
@@ -2854,6 +2902,15 @@ void readMakePages(read_t *rd, int dN, int cX, int fromUI)
 
 		sprintf(sbuf, "%s: [%2i] %.95s", tbuf, N, rd->data[dN].label[N]);
 		ansiShort(rd->page[pN].fig[0].label, sbuf, PLOT_STRING_MAX);
+
+		if (cX >= 0) {
+
+			labelGetUnit(tbuf, rd->data[dN].label[cX], 20);
+			strcpy(rd->page[pN].ax[0].label, tbuf);
+		}
+		else {
+			rd->page[pN].ax[0].label[0] = 0;
+		}
 
 		labelGetUnit(tbuf, rd->data[dN].label[N], 20);
 		strcpy(rd->page[pN].ax[1].label, tbuf);
@@ -2984,6 +3041,7 @@ int readGetTimeColumn(read_t *rd, int dN)
 
 void readSetTimeColumn(read_t *rd, int dN, int cX)
 {
+	char		tbuf[READ_TOKEN_MAX];
 	page_t		*pg;
 	int		gN, cNP, pN;
 
@@ -3012,6 +3070,15 @@ void readSetTimeColumn(read_t *rd, int dN, int cX)
 				cNP = (cNP == -2) ? pg->fig[0].cX : cNP;
 
 				pg->fig[0].cX = cX;
+
+				if (cX >= 0) {
+
+					labelGetUnit(tbuf, rd->data[dN].label[cX], 20);
+					strcpy(rd->page[pN].ax[0].label, tbuf);
+				}
+				else {
+					rd->page[pN].ax[0].label[0] = 0;
+				}
 			}
 		}
 

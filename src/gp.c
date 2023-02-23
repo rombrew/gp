@@ -1,6 +1,6 @@
 /*
    Graph Plotter for numerical data analysis.
-   Copyright (C) 2022 Roman Belov <romblv@gmail.com>
+   Copyright (C) 2023 Roman Belov <romblv@gmail.com>
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -250,7 +250,7 @@ gpDefaultFile(gp_t *gp)
 		ERROR("fopen(\"%s\"): %s\n", gp->rcfile, strerror(errno));
 	}
 	else {
-		fprintf(fd,	"gpversion %i\n", GP_CONFIG_VERSION);
+		fprintf(fd,	"gpconfig %i\n", GP_CONFIG_VERSION);
 
 		fprintf(fd,	"font 24 \"normal\"\n"
 				"preload 8388608\n"
@@ -1920,6 +1920,19 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 			case 0:
 				menuRaise(mu, 201, gp->la->axis_zoom_menu, mu->box_X, mu->box_Y);
+
+				if (pl->axis[gp->ax_N].slave != 0) {
+
+					mu->hidden_N[0] = 0;
+					mu->hidden_N[1] = 1;
+					mu->hidden_N[2] = 2;
+				}
+				else if (	gp->ax_N == pl->on_X
+						|| gp->ax_N == pl->on_Y) {
+
+					mu->hidden_N[0] = 2;
+				}
+
 				gp->stat = GP_MENU;
 				break;
 
@@ -1938,8 +1951,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 					}
 				}
 				else {
-					plotAxisSlave(pl, gp->ax_N, -1,
-							0., 0., AXIS_SLAVE_DISABLE);
+					plotAxisSlave(pl, gp->ax_N, -1, 0., 0., AXIS_SLAVE_DISABLE);
 				}
 				break;
 
@@ -2026,12 +2038,14 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 2:
-				if (pl->axis[gp->ax_N].busy == AXIS_BUSY_X) {
+				if (		pl->axis[gp->ax_N].busy == AXIS_BUSY_X
+						&& pl->axis[gp->ax_N].slave == 0) {
 
 					pl->axis[gp->ax_N].scale = pl->axis[pl->on_X].scale;
 					pl->axis[gp->ax_N].offset = pl->axis[pl->on_X].offset;
 				}
-				else if (pl->axis[gp->ax_N].busy == AXIS_BUSY_Y) {
+				else if (	pl->axis[gp->ax_N].busy == AXIS_BUSY_Y
+						&& pl->axis[gp->ax_N].slave == 0) {
 
 					pl->axis[gp->ax_N].scale = pl->axis[pl->on_Y].scale;
 					pl->axis[gp->ax_N].offset = pl->axis[pl->on_Y].offset;
@@ -2471,7 +2485,8 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 				for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
 
-					if (pl->figure[fN].busy != 0) {
+					if (		pl->figure[fN].busy != 0
+							&& pl->figure[fN].hidden == 0) {
 
 						plotFigureSubtractScale(pl, fN, axis_1,
 								scale, offset);
@@ -2722,6 +2737,7 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 				if (pl->hover_axis != -1) {
 
 					gp->ax_N = pl->hover_axis;
+
 					gpMenuHandle(gp, 201, 0);
 				}
 				else {
@@ -2812,6 +2828,7 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 					if (N != pl->on_X && N != pl->on_Y) {
 
 						gp->ax_N = N;
+
 						gpMenuHandle(gp, 2, 1);
 					}
 				}
@@ -2820,13 +2837,14 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 
 				if (pl->hover_axis != -1) {
 
-					if (pl->hover_axis != pl->on_X
+					if (		pl->hover_axis != pl->on_X
 							&& pl->hover_axis != pl->on_Y) {
 
 						mu->box_X = gp->cur_X;
 						mu->box_Y = gp->cur_Y;
 
 						gp->ax_N = pl->hover_axis;
+
 						gpMenuHandle(gp, 2, 2);
 					}
 				}
@@ -2836,6 +2854,7 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 					mu->box_Y = gp->cur_Y;
 
 					gp->fig_N = pl->hover_figure;
+
 					gpMenuHandle(gp, 3, 2);
 				}
 			}
