@@ -14,10 +14,10 @@ CFLAGS  += -I/usr/include/SDL2 -D_REENTRANT
 LFLAGS	= -lm -lSDL2 -lSDL2_ttf -lSDL2_image
 
 OBJS	= async.o \
-	  blob_ttf.o \
 	  dirent.o \
 	  draw.o \
 	  edit.o \
+	  font.o \
 	  gp.o \
 	  lang.o \
 	  lse.o \

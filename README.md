@@ -5,8 +5,8 @@ claim to replace all other plotters.
 
 ## Features
 
-* 2D plot with lines or dots from plain text or binary files.
-* Spatial fast rendering to look through a large datasets.
+* Plot 2D figures with lines or dots from plain text or binary files.
+* Spatial structure based rendering to look through a large datasets.
 * Multiple axes are supported by design.
 * Real-time plotting from multiple asynchronous sources.
 * Simple math operations like subtraction or polynomial fitting.
@@ -14,7 +14,7 @@ claim to replace all other plotters.
 * Static (from file) and dynamic (from UI) configuration.
 * Export to PNG or SVG.
 
-The main platforms are GNU/Linux and Windows. GP can be embedded in a
+The main platforms are GNU/Linux and Windows. Also GP can be embedded in any
 third-party SDL2 based application.
 
 ## Screenshots

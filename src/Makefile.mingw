@@ -25,10 +25,10 @@ LFLAGS  += -Wl,--gc-sections -Wl,--no-undefined -lusp10 -ldinput8 -ldxguid \
 	   -lshell32 -lsetupapi -lversion -luuid -lrpcrt4 -static-libgcc
 
 OBJS	= async.o \
-	  blob_ttf.o \
 	  dirent.o \
 	  draw.o \
 	  edit.o \
+	  font.o \
 	  gp.o \
 	  lang.o \
 	  lse.o \
