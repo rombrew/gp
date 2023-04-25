@@ -18,12 +18,15 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
+#include <errno.h>
 #include <math.h>
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 
 #include "plot.h"
+#include "read.h"
 #include "draw.h"
 #include "lse.h"
 #include "lz4.h"
@@ -819,7 +822,8 @@ plotDataResample(plot_t *pl, int dN, int cN_X, int cN_Y, int dN_p, int cN_X_p, i
 			if (		pl->interpolation != 0
 					&& X_p >= X) {
 
-				if (prev_X_p <= X) {
+				if (		prev_X_p <= X
+						&& prev_X_p < X_p) {
 
 					Qf = (X - prev_X_p) / (X_p - prev_X_p);
 					Y = prev_Y_p + (Y_p - prev_Y_p) * Qf;
@@ -949,6 +953,39 @@ plotDataPolyfit(plot_t *pl, int dN, int cN_X, int cN_Y,
 
 	lse_solve(&pl->lsq);
 	lse_std(&pl->lsq);
+}
+
+static void
+plotDataFileCSV(plot_t *pl, int dN, int list_cN[16], int len_N, FILE *fd_csv)
+{
+	const fval_t	*row;
+	fval_t		fval;
+	int		N, rN, id_N;
+
+	rN = pl->data[dN].head_N;
+	id_N = pl->data[dN].id_N;
+
+	do {
+		row = plotDataGet(pl, dN, &rN);
+
+		if (row == NULL)
+			break;
+
+		for (N = 0; N < len_N; ++N) {
+
+			char		sfmt[PLOT_STRING_MAX];
+
+			fval = (list_cN[N] < 0) ? id_N : row[list_cN[N]];
+
+			sprintf(sfmt, "%% .%iE;", pl->fprecision - 1);
+			fprintf(fd_csv, sfmt, fval);
+		}
+
+		fprintf(fd_csv, "\n");
+
+		id_N++;
+	}
+	while (1);
 }
 
 void plotDataSubtract(plot_t *pl, int dN, int sN)
@@ -3461,6 +3498,22 @@ void plotFigureExchange(plot_t *pl, int fN, int fN_1)
 	memcpy(&pl->figure[fN], backup, sizeof(pl->figure[0]));
 }
 
+int plotFigureSelected(plot_t *pl)
+{
+	int		fN, N = 0;
+
+	for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
+
+		if (		pl->figure[fN].busy != 0
+				&& pl->figure[fN].hidden == 0) {
+
+			N++;
+		}
+	}
+
+	return N;
+}
+
 static int
 plotGetSubtractTimeUnwrapByMatch(plot_t *pl, int dN, int cN)
 {
@@ -3726,6 +3779,7 @@ void plotFigureSubtractScale(plot_t *pl, int fN_1, int aBUSY, double scale, doub
 static int
 plotFigureSubtractAdd(plot_t *pl, int fN, int fN_1, int fN_2, int opSUB)
 {
+	const char	*label_1, *label_2, *delim;
 	int		dN, aN_X, aN_Y, cN_X, cN_Y;
 
 	dN = pl->figure[fN_1].data_N;
@@ -3739,7 +3793,8 @@ plotFigureSubtractAdd(plot_t *pl, int fN, int fN_1, int fN_2, int opSUB)
 		return 0;
 	}
 
-	if (dN != pl->figure[fN_2].data_N || cN_X != pl->figure[fN_2].column_X) {
+	if (		dN != pl->figure[fN_2].data_N
+			|| cN_X != pl->figure[fN_2].column_X) {
 
 		cN_Y = plotGetSubtractResample(pl, dN, cN_X,
 				pl->figure[fN_2].data_N,
@@ -3776,29 +3831,30 @@ plotFigureSubtractAdd(plot_t *pl, int fN, int fN_1, int fN_2, int opSUB)
 
 	plotFigureAdd(pl, fN, dN, cN_X, cN_Y, aN_X, aN_Y, "");
 
+	label_1 = pl->figure[fN_1].label;
+	label_2 = pl->figure[fN_2].label;
+
+	delim = strrchr(label_1, ' ');
+	label_1 = (delim != NULL) ? delim + 1 : label_1;
+
+	delim = strrchr(label_2, ' ');
+	label_2 = (delim != NULL) ? delim + 1 : label_2;
+
 	if (opSUB == SUBTRACT_BINARY_SUBTRACTION) {
 
-		sprintf(pl->figure[fN].label, "R: (%.35s) - (%.35s)",
-				pl->figure[fN_1].label,
-				pl->figure[fN_2].label);
+		sprintf(pl->figure[fN].label, "R: %.35s - %.35s", label_1, label_2);
 	}
 	else if (opSUB == SUBTRACT_BINARY_ADDITION) {
 
-		sprintf(pl->figure[fN].label, "A: (%.35s) + (%.35s)",
-				pl->figure[fN_1].label,
-				pl->figure[fN_2].label);
+		sprintf(pl->figure[fN].label, "A: %.35s + %.35s", label_1, label_2);
 	}
 	else if (opSUB == SUBTRACT_BINARY_MULTIPLICATION) {
 
-		sprintf(pl->figure[fN].label, "M: (%.35s) * (%.35s)",
-				pl->figure[fN_1].label,
-				pl->figure[fN_2].label);
+		sprintf(pl->figure[fN].label, "M: %.35s * %.35s", label_1, label_2);
 	}
 	else if (opSUB == SUBTRACT_BINARY_HYPOTENUSE) {
 
-		sprintf(pl->figure[fN].label, "H: (%.35s) (%.35s)",
-				pl->figure[fN_1].label,
-				pl->figure[fN_2].label);
+		sprintf(pl->figure[fN].label, "H: %.35s ~ %.35s", label_1, label_2);
 	}
 
 	pl->figure[fN].drawing = pl->figure[fN_1].drawing;
@@ -3916,27 +3972,34 @@ void plotFigureSubtractFilter(plot_t *pl, int fN_1, int opSUB, double arg_1, dou
 static void
 plotFigureSubtractBinaryLinked(plot_t *pl, int fN, int opSUB, int fNP[2])
 {
-	int		dN, sN, sE, cN, fN_1 = -1, fN_2 = -1;
+	int		dN, dN_1, sN, sE, cN, fN_1, fN_2;
 
 	dN = pl->figure[fN].data_N;
 	sN = pl->figure[fN].column_Y - pl->data[dN].column_N;
 
-	if (sN >= 0 && sN < PLOT_SUBTRACT && pl->data[dN].sub[sN].busy == opSUB) {
+	fN_1 = -1;
+	fN_2 = -1;
+
+	if (		sN >= 0 && sN < PLOT_SUBTRACT
+			&& pl->data[dN].sub[sN].busy == opSUB) {
 
 		cN = pl->data[dN].sub[sN].op.binary.column_1;
 		sE = cN - pl->data[dN].column_N;
+
+		dN_1 = dN;
 
 		if (		sE >= 0 && sE < PLOT_SUBTRACT
 				&& pl->data[dN].sub[sE].busy == SUBTRACT_RESAMPLE) {
 
 			cN = pl->data[dN].sub[sE].op.resample.column_in_Y;
+			dN_1 = pl->data[dN].sub[sE].op.resample.in_data_N;
 		}
 
 		for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
 
 			if (pl->figure[fN].busy != 0) {
 
-				if (		dN == pl->figure[fN].data_N
+				if (		dN_1 == pl->figure[fN].data_N
 						&& cN == pl->figure[fN].column_Y) {
 
 					fN_1 = fN;
@@ -3948,18 +4011,20 @@ plotFigureSubtractBinaryLinked(plot_t *pl, int fN, int opSUB, int fNP[2])
 		cN = pl->data[dN].sub[sN].op.binary.column_2;
 		sE = cN - pl->data[dN].column_N;
 
+		dN_1 = dN;
+
 		if (		sE >= 0 && sE < PLOT_SUBTRACT
 				&& pl->data[dN].sub[sE].busy == SUBTRACT_RESAMPLE) {
 
 			cN = pl->data[dN].sub[sE].op.resample.column_in_Y;
-			dN = pl->data[dN].sub[sE].op.resample.in_data_N;
+			dN_1 = pl->data[dN].sub[sE].op.resample.in_data_N;
 		}
 
 		for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
 
 			if (pl->figure[fN].busy != 0) {
 
-				if (		dN == pl->figure[fN].data_N
+				if (		dN_1 == pl->figure[fN].data_N
 						&& cN == pl->figure[fN].column_Y) {
 
 					fN_2 = fN;
@@ -4002,6 +4067,7 @@ void plotFigureSubtractSwitch(plot_t *pl, int opSUB)
 		if (fN_1 != -1 && fN_2 != -1) {
 
 			pl->figure[fN].hidden = 1;
+
 			pl->figure[fN_1].hidden = 0;
 			pl->figure[fN_2].hidden = 0;
 
@@ -4038,9 +4104,10 @@ void plotFigureSubtractSwitch(plot_t *pl, int opSUB)
 
 		if (fN != -1) {
 
+			pl->figure[fN].hidden = 0;
+
 			pl->figure[fN_1].hidden = 1;
 			pl->figure[fN_2].hidden = 1;
-			pl->figure[fN].hidden = 0;
 
 			if (		pl->figure[fN].axis_X == pl->figure[fN_1].axis_X
 					&& pl->figure[fN].axis_X == pl->figure[fN_2].axis_X) {
@@ -4103,6 +4170,56 @@ void plotFigureSubtractSwitch(plot_t *pl, int opSUB)
 	if (pl->axis[pl->on_Y].slave != 0) {
 
 		pl->on_Y = pl->axis[pl->on_Y].slave_N;
+	}
+}
+
+void plotFigureSubtractResample(plot_t *pl, int fN)
+{
+	int		N, dN, aN, cN_X, cN_Y;
+
+	dN = pl->figure[fN].data_N;
+	aN = pl->figure[fN].axis_X;
+	cN_X = pl->figure[fN].column_X;
+
+	for (N = 0; N < PLOT_FIGURE_MAX; ++N) {
+
+		if (		pl->figure[N].busy != 0
+				&& pl->figure[N].hidden == 0
+				&& N != fN) {
+
+			if (aN != pl->figure[N].axis_X) {
+
+				ERROR("All figures must be on the same axis on X\n");
+				return ;
+			}
+		}
+	}
+
+	for (N = 0; N < PLOT_FIGURE_MAX; ++N) {
+
+		if (		pl->figure[N].busy != 0
+				&& pl->figure[N].hidden == 0
+				&& N != fN) {
+
+			if (		dN != pl->figure[N].data_N
+					|| cN_X != pl->figure[N].column_X) {
+
+				cN_Y = plotGetSubtractResample(pl, dN, cN_X,
+						pl->figure[N].data_N,
+						pl->figure[N].column_X,
+						pl->figure[N].column_Y);
+
+				if (cN_Y == -1) {
+
+					ERROR("Unable to get resample subtract\n");
+					return ;
+				}
+
+				pl->figure[N].data_N = dN;
+				pl->figure[N].column_Y = cN_X;
+				pl->figure[N].column_Y = cN_Y;
+			}
+		}
 	}
 }
 
@@ -4262,6 +4379,159 @@ void plotFigureSubtractPolyfit(plot_t *pl, int fN_1, int poly_N1, int poly_N2)
 	pl->figure[fN].width = pl->figure[fN_1].width;
 
 	plotDataBoxPolyfit(pl, fN);
+}
+
+static void
+plotLabelFusedCSV(char *label, const char *name, const char *unit)
+{
+	const char		*s;
+	char			*l = label;
+	int			n;
+
+	s = strrchr(name, ' ');
+	s = (s != NULL) ? s + 1 : name;
+	n = 0;
+
+	while (*s != 0) {
+
+		if (*s == '@')
+			break;
+
+		*l++ = (strchr(" \t;,", *s) == NULL) ? *s : '_';
+
+		++s;
+		++n;
+
+		if (n >= 50)
+			break;
+	}
+
+	*l++ = '@';
+
+	s = unit;
+	n = 0;
+
+	while (*s != 0) {
+
+		if (*s == '@')
+			break;
+
+		*l++ = (strchr(" \t;,", *s) == NULL) ? *s : '_';
+
+		++s;
+		++n;
+
+		if (n >= 20)
+			break;
+	}
+
+	*l = 0;
+}
+
+void plotFigureExportCSV(plot_t *pl, const char *file)
+{
+	FILE		*fd_csv;
+	int		list_cN[16], list_fN[16], len_N;
+	int		N, fN, dN, dN_common, aN, job;
+
+	fd_csv = unified_fopen(file, "w");
+
+	if (fd_csv == NULL) {
+
+		ERROR("fopen(\"%s\"): %s\n", file, strerror(errno));
+		return ;
+	}
+
+	len_N = 0;
+	dN_common = -1;
+
+	for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
+
+		if (		pl->figure[fN].busy != 0
+				&& pl->figure[fN].hidden == 0) {
+
+			dN = pl->figure[fN].data_N;
+			aN = pl->figure[fN].axis_X;
+
+			dN_common = (dN_common < 0) ? dN : dN_common;
+
+			if (		aN == pl->on_X
+					&& dN == dN_common) {
+
+				job = 1;
+
+				for (N = 0; N < len_N; ++N) {
+
+					if (list_cN[N] == pl->figure[fN].column_X) {
+
+						job = 0;
+						break;
+					}
+				}
+
+				if (job != 0) {
+
+					list_cN[len_N] = pl->figure[fN].column_X;
+					list_fN[len_N] = fN;
+
+					len_N++;
+				}
+
+				job = 1;
+
+				for (N = 0; N < len_N; ++N) {
+
+					if (list_cN[N] == pl->figure[fN].column_Y) {
+
+						job = 0;
+						break;
+					}
+				}
+
+				if (job != 0) {
+
+					list_cN[len_N] = pl->figure[fN].column_Y;
+					list_fN[len_N] = fN;
+
+					len_N++;
+				}
+			}
+		}
+	}
+
+	if (len_N >= 2) {
+
+		char		labelbuf[PLOT_STRING_MAX];
+
+		for (N = 0; N < len_N; ++N) {
+
+			fN = list_fN[N];
+
+			if (list_cN[N] == pl->figure[fN].column_X) {
+
+				aN = pl->figure[fN].axis_X;
+
+				plotLabelFusedCSV(labelbuf, "",
+						pl->axis[aN].label);
+			}
+			else {
+				aN = pl->figure[fN].axis_Y;
+
+				plotLabelFusedCSV(labelbuf,
+						pl->figure[fN].label,
+						pl->axis[aN].label);
+
+			}
+
+			fprintf(fd_csv, "%s;", labelbuf);
+		}
+
+		fprintf(fd_csv, "\n");
+
+		plotDataFileCSV(pl, dN_common, list_cN, len_N, fd_csv);
+	}
+
+	fclose(fd_csv);
 }
 
 void plotFigureClean(plot_t *pl)

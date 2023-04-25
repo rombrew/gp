@@ -475,6 +475,7 @@ void plotFigureGarbage(plot_t *pl, int dN);
 void plotFigureMoveAxes(plot_t *pl, int fN);
 void plotFigureMakeIndividualAxes(plot_t *pl, int fN);
 void plotFigureExchange(plot_t *pl, int fN_1, int fN_2);
+int plotFigureSelected(plot_t *pl);
 
 int plotGetSubtractTimeUnwrap(plot_t *pl, int dN, int cN);
 int plotGetSubtractScale(plot_t *pl, int dN, int cN, double scale, double offset);
@@ -486,8 +487,11 @@ void plotFigureSubtractTimeUnwrap(plot_t *pl, int fN_1);
 void plotFigureSubtractScale(plot_t *pl, int fN_1, int aBUSY, double scale, double offset);
 void plotFigureSubtractFilter(plot_t *pl, int fN_1, int opSUB, double arg_1, double arg_2);
 void plotFigureSubtractSwitch(plot_t *pl, int opSUB);
+void plotFigureSubtractResample(plot_t *pl, int fN);
+
 int plotDataBoxPolyfit(plot_t *pl, int fN);
 void plotFigureSubtractPolyfit(plot_t *pl, int fN_1, int poly_N1, int poly_N2);
+void plotFigureExportCSV(plot_t *pl, const char *file);
 void plotFigureClean(plot_t *pl);
 void plotSketchClean(plot_t *pl);
 

@@ -12,9 +12,9 @@ claim to replace all other plotters.
 * Simple math operations like subtraction or polynomial fitting.
 * Data sampling tool to extract accurate numeric values.
 * Static (from file) and dynamic (from UI) configuration.
-* Export to PNG or SVG.
+* Export current view (PNG, SVG, CSV).
 
-The main platforms are GNU/Linux and Windows. Also GP can be embedded in any
+The main platforms are GNU/Linux and Windows. GP can be embedded to any
 third-party SDL2 based application.
 
 ## Screenshots
@@ -39,8 +39,9 @@ You can just use GP with a plain text file or CSV table.
 
 	$ gp file.txt
 
-Note that first valid line of plain text (or CSV) file will be interpreted
-as **name@unit** of the columns. Here is a simple example of the file.
+Note that first valid line of plain text (or CSV) file will be interpreted as
+**name@unit** description of the columns. Here is a simple example of the plain
+text file.
 
 	$ cat file.txt
 	time@s  var1@a  var2@v  hexpar@
@@ -61,7 +62,7 @@ Take a look into configuration examples that describes most of the options.
 * [loadfloat.gp](config/loadfloat.gp)
 * [loadcsv.gp](config/loadcsv.gp)
 
-## Live plot configuration
+## Live configuration
 
 You can make real-time plot from raw serial device or from logfiles. Check
 these examples.
@@ -70,7 +71,7 @@ these examples.
 
 ## TODO
 
-* Add all subtract operations to GP configuration file.
-* Add data subset (from current page) export to CSV.
-* Optimize line drawing on long lines random test.
+* Add all subtract operations to the GP configuration file.
+* Add the command line options to control GP.
+* Optimize line drawing performance on the random test.
 

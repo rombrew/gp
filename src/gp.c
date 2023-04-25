@@ -46,6 +46,19 @@
 
 #define GP_FILE_DIR_MAX			4000
 
+enum {
+	GP_TAKE_NONE		= 0,
+	GP_TAKE_PNG,
+	GP_TAKE_SVG,
+	GP_TAKE_CSV
+};
+
+enum {
+	GP_COMBINE_NONE		= 0,
+	GP_COMBINE_AXES_REMAP,
+	GP_COMBINE_NO_REMAP
+};
+
 struct gp_struct {
 
 	scheme_t	*sch;
@@ -816,7 +829,7 @@ gpDirWalk(gp_t *gp, int dir_N, int revert)
 
 			gpUnifiedFileOpen(gp, gp->tempfile, 1);
 
-			walk = gp->shift_on ? 3 : 0;
+			walk = 3;
 		}
 	}
 
@@ -1252,22 +1265,28 @@ gpMakeAboutMenu(gp_t *gp)
 static void
 gpTakeScreen(gp_t *gp)
 {
-	if (gp->screen_take == 1) {
+	if (gp->screen_take == GP_TAKE_PNG) {
 
 		if (IMG_SavePNG(gp->surface, gp->tempfile) == 0) {
 
 			ERROR("Screen was saved to \"%s\"\n", gp->tempfile);
 		}
 	}
-	else if (gp->screen_take == 2) {
+	else if (gp->screen_take == GP_TAKE_SVG) {
 
 		svgClose((svg_t *) gp->surface->userdata);
 		gp->surface->userdata = NULL;
 
 		ERROR("Figure was saved to \"%s\"\n", gp->tempfile);
 	}
+	else if (gp->screen_take == GP_TAKE_CSV) {
 
-	gp->screen_take = 0;
+		plotFigureExportCSV(gp->pl, gp->tempfile);
+
+		ERROR("CSV table was saved to \"%s\"\n", gp->tempfile);
+	}
+
+	gp->screen_take = GP_TAKE_NONE;
 }
 
 #ifdef _WINDOWS
@@ -1382,6 +1401,8 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				editRaise(ed, 7, gp->la->file_name_edit,
 						gp->sbuf[0], mu->box_X, mu->box_Y);
 
+				ed->list_fmt = ".png\0.svg\0.csv\0\0";
+
 				gp->stat = GP_EDIT;
 				break;
 
@@ -1446,7 +1467,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 					menuSelect(mu, rd->page_N);
 
 					mu->hidden_N[0] = rd->page_N - 1;
-					gp->combine_on = 0;
+					gp->combine_on = GP_COMBINE_NONE;
 
 					gp->stat = GP_MENU;
 				}
@@ -1461,7 +1482,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 					menuSelect(mu, rd->page_N);
 
 					mu->hidden_N[0]= rd->page_N - 1;
-					gp->combine_on = 1;
+					gp->combine_on = GP_COMBINE_AXES_REMAP;
 
 					gp->stat = GP_MENU;
 				}
@@ -1476,7 +1497,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 					menuSelect(mu, rd->page_N);
 
 					mu->hidden_N[0] = rd->page_N - 1;
-					gp->combine_on = 2;
+					gp->combine_on = GP_COMBINE_NO_REMAP;
 
 					gp->stat = GP_MENU;
 				}
@@ -2086,18 +2107,39 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 2:
-				menuRaise(mu, 301, gp->la->cancel_menu, mu->box_X, mu->box_Y);
+				menuRaise(mu, 301, gp->la->cancel_menu,
+						mu->box_X, mu->box_Y);
 				gp->stat = GP_MENU;
 				break;
 
 			case 3:
 				menuRaise(mu, 302, gp->la->figure_operation_menu,
 						mu->box_X, mu->box_Y);
+
+				N = plotFigureSelected(pl);
+
+				if (N < 2) {
+
+					mu->hidden_N[0] = 2;
+					mu->hidden_N[1] = 5;
+					mu->hidden_N[2] = 6;
+					mu->hidden_N[3] = 7;
+					mu->hidden_N[4] = 8;
+				}
+				else if (N != 2) {
+
+					mu->hidden_N[0] = 5;
+					mu->hidden_N[1] = 6;
+					mu->hidden_N[2] = 7;
+					mu->hidden_N[3] = 8;
+				}
+
 				gp->stat = GP_MENU;
 				break;
 
 			case 4:
-				menuRaise(mu, 303, gp->la->figure_edit_menu, mu->box_X, mu->box_Y);
+				menuRaise(mu, 303, gp->la->figure_edit_menu,
+						mu->box_X, mu->box_Y);
 				gp->stat = GP_MENU;
 				break;
 		}
@@ -2139,58 +2181,62 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 2:
+				plotFigureSubtractResample(pl, gp->fig_N);
+				break;
+
+			case 3:
 				editRaise(ed, 5, gp->la->scale_offset_edit,
 						"1", mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
 
-			case 3:
+			case 4:
 				editRaise(ed, 6, gp->la->scale_offset_edit,
 						"-1", mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
 
-			case 4:
+			case 5:
 				plotFigureSubtractSwitch(pl, SUBTRACT_BINARY_SUBTRACTION);
 				break;
 
-			case 5:
+			case 6:
 				plotFigureSubtractSwitch(pl, SUBTRACT_BINARY_ADDITION);
 				break;
 
-			case 6:
+			case 7:
 				plotFigureSubtractSwitch(pl, SUBTRACT_BINARY_MULTIPLICATION);
 				break;
 
-			case 7:
+			case 8:
 				plotFigureSubtractSwitch(pl, SUBTRACT_BINARY_HYPOTENUSE);
 				break;
 
-			case 8:
+			case 9:
 				plotFigureSubtractFilter(pl, gp->fig_N, SUBTRACT_FILTER_DIFFERENCE, 0., 0.);
 				break;
 
-			case 9:
+			case 10:
 				plotFigureSubtractFilter(pl, gp->fig_N, SUBTRACT_FILTER_CUMULATIVE, 0., 0.);
 				break;
 
-			case 10:
+			case 11:
 				editRaise(ed, 8, gp->la->bit_number_edit,
 						"0", mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
 
-			case 11:
+			case 12:
 				editRaise(ed, 13, gp->la->low_pass_edit,
 						"0.1", mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
 
-			case 12:
+			case 13:
 				if (plotDataBoxPolyfit(pl, gp->fig_N) == 0) {
 
 					editRaise(ed, 16, gp->la->polynomial_edit,
@@ -2384,49 +2430,37 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 		N = item_N + 1;
 
-		if (gp->combine_on == 1) {
+		if (gp->combine_on == GP_COMBINE_AXES_REMAP) {
 
 			readCombinePage(rd, N, 1);
 
-			if (gp->shift_on == 1) {
+			for (N = 1; N < MENU_OPTION_MAX; ++N) {
 
-				for (N = 1; N < MENU_OPTION_MAX; ++N) {
+				if (mu->hidden_N[N] < 0) {
 
-					if (mu->hidden_N[N] < 0) {
-
-						mu->hidden_N[N] = item_N;
-						break;
-					}
+					mu->hidden_N[N] = item_N;
+					break;
 				}
+			}
 
-				menuResume(mu);
-				gp->stat = GP_MENU;
-			}
-			else {
-				gp->combine_on = 0;
-			}
+			menuResume(mu);
+			gp->stat = GP_MENU;
 		}
-		else if (gp->combine_on == 2) {
+		else if (gp->combine_on == GP_COMBINE_NO_REMAP) {
 
 			readCombinePage(rd, N, 0);
 
-			if (gp->shift_on == 1) {
+			for (N = 1; N < MENU_OPTION_MAX; ++N) {
 
-				for (N = 1; N < MENU_OPTION_MAX; ++N) {
+				if (mu->hidden_N[N] < 0) {
 
-					if (mu->hidden_N[N] < 0) {
-
-						mu->hidden_N[N] = item_N;
-						break;
-					}
+					mu->hidden_N[N] = item_N;
+					break;
 				}
+			}
 
-				menuResume(mu);
-				gp->stat = GP_MENU;
-			}
-			else {
-				gp->combine_on = 0;
-			}
+			menuResume(mu);
+			gp->stat = GP_MENU;
 		}
 		else {
 			readSelectPage(rd, N);
@@ -2513,7 +2547,7 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 		if (strcmp(file, ".png") == 0) {
 
-			gp->screen_take = 1;
+			gp->screen_take = GP_TAKE_PNG;
 		}
 		else if (strcmp(file, ".svg") == 0) {
 
@@ -2524,7 +2558,11 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 			g->font_pt = pl->layout_font_pt;
 
 			gp->surface->userdata = (void *) g;
-			gp->screen_take = 2;
+			gp->screen_take = GP_TAKE_SVG;
+		}
+		else if (strcmp(file, ".csv") == 0) {
+
+			gp->screen_take = GP_TAKE_CSV;
 		}
 	}
 	else if (edit_N == 8) {
@@ -3522,6 +3560,10 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 			else if (ev->key.keysym.sym == SDLK_v && gp->ctrl_on == 1) {
 
 				editEvent(ed, EDIT_EVNO_CTRL_V, gp->cur_X, gp->cur_Y);
+			}
+			else if (ev->key.keysym.sym == SDLK_TAB) {
+
+				editEvent(ed, EDIT_EVNO_TAB, gp->cur_X, gp->cur_Y);
 			}
 		}
 		else if (ev->type == SDL_TEXTINPUT && gp->ctrl_on == 0) {
