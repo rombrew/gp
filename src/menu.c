@@ -353,7 +353,7 @@ menuConvFuzzy(menu_t *mu, int fuzzy_N)
 }
 
 static void
-menuScrollBarClick(menu_t *mu)
+menuScrollClick(menu_t *mu)
 {
 	int			topY, baseX, baseY;
 
@@ -404,7 +404,7 @@ void menuEvent(menu_t *mu, int evno, int ex, int ey)
 				? -1 : mu->clicked_N;
 		}
 
-		menuScrollBarClick(mu);
+		menuScrollClick(mu);
 	}
 	else if (evno == MENU_EVNO_UNCLICK) {
 
@@ -414,7 +414,7 @@ void menuEvent(menu_t *mu, int evno, int ex, int ey)
 
 		if (mu->scroll_drag != 0) {
 
-			menuScrollBarClick(mu);
+			menuScrollClick(mu);
 		}
 		else {
 			mu->hovered_N = menuItemHover(mu);

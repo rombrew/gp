@@ -60,7 +60,7 @@ colorscheme 0
 #
 antialiasing 1
 
-# Draw a solid font (0 = blended, 1 = solid).
+# Draw UI text with solid font (0 = blended, 1 = solid).
 #
 solidfont 0
 
@@ -79,7 +79,12 @@ drawing line 2
 #
 shortfilename 1
 
-# Interpolation method when resampling is necessary (0 = nearest, 1 = linear).
+# Screen draw time upper bound (in milliseconds) after that antialiasing mode
+# is forced to NONE.
+#
+drawboost 200
+
+# Interpolation method of resample operation (0 = nearest, 1 = linear).
 #
 interpolation 1
 

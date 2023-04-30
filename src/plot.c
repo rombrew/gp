@@ -693,9 +693,9 @@ plotDataWrite(plot_t *pl, int dN, int *rN)
 }
 
 static void
-plotDataSkip(plot_t *pl, int dN, int *rN, int *id_N, int sk_N)
+plotDataSkip(plot_t *pl, int dN, int *rN, int *id_N, int iN)
 {
-	int		lN, N, tN;
+	int		N, lN, tN;
 
 	lN = pl->data[dN].length_N;
 
@@ -705,10 +705,10 @@ plotDataSkip(plot_t *pl, int dN, int *rN, int *id_N, int sk_N)
 	tN = pl->data[dN].tail_N - pl->data[dN].head_N;
 	tN = (tN < 0) ? tN + lN : tN;
 
-	sk_N = (N + sk_N < 0) ? - N : sk_N;
-	sk_N = (N + sk_N > tN) ? tN - N : sk_N;
+	iN = (N + iN < 0) ? - N : iN;
+	iN = (N + iN > tN) ? tN - N : iN;
 
-	N += sk_N;
+	N += iN;
 
 	N = pl->data[dN].head_N + N;
 	N = (N > lN - 1) ? N - lN : N;
@@ -720,7 +720,7 @@ plotDataSkip(plot_t *pl, int dN, int *rN, int *id_N, int sk_N)
 
 	if (id_N != NULL) {
 
-		*id_N += sk_N;
+		*id_N += iN;
 	}
 }
 
@@ -988,53 +988,28 @@ plotDataFileCSV(plot_t *pl, int dN, int list_cN[16], int len_N, FILE *fd_csv)
 	while (1);
 }
 
-void plotDataSubtract(plot_t *pl, int dN, int sN)
+static void
+plotDataSubtractWrite(plot_t *pl, int dN, int sN, int sN_end,
+		int rN_beg, int id_N_beg, int rN_end)
 {
 	fval_t		*row, X_1, X_2, X_3;
 	double		scale, offset, gain;
-	int		cN, cN_1, cN_2, cN_3, dN_1;
-	int		rN, rS, sE, id_N, id_S, mode;
-
-	if (dN < 0 || dN >= PLOT_DATASET_MAX) {
-
-		ERROR("Dataset number is out of range\n");
-		return ;
-	}
-
-	if (sN < -1 || sN >= PLOT_SUBTRACT) {
-
-		ERROR("Subtract number %i is out of range\n", sN);
-		return ;
-	}
-
-	if (sN < 0) {
-
-		sN = 0;
-		sE = PLOT_SUBTRACT;
-
-		rS = pl->data[dN].sub_N;
-		pl->data[dN].sub_N = pl->data[dN].tail_N;
-	}
-	else {
-		sE = sN;
-		rS = pl->data[dN].head_N;
-	}
+	int		cN, rN, id_N, cN_1, cN_2, cN_3, dN_1, mode;
 
 	do {
 		mode = pl->data[dN].sub[sN].busy;
-		cN = sN + pl->data[dN].column_N;
 
-		rN = rS;
-		id_N = pl->data[dN].id_N;
+		if (mode != SUBTRACT_FREE) {
 
-		id_S = rS - pl->data[dN].head_N;
-		id_S += (id_S < 0) ? pl->data[dN].length_N : 0;
+			cN = sN + pl->data[dN].column_N;
 
-		id_N += id_S;
+			rN = rN_beg;
+			id_N = id_N_beg;
+		}
 
 		if (mode == SUBTRACT_TIME_UNWRAP) {
 
-			if (rS == pl->data[dN].head_N) {
+			if (rN_beg == pl->data[dN].head_N) {
 
 				pl->data[dN].sub[sN].op.time.unwrap = (double) 0.;
 				pl->data[dN].sub[sN].op.time.prev = FP_NAN;
@@ -1073,6 +1048,9 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 				}
 
 				id_N++;
+
+				if (rN == rN_end)
+					break;
 			}
 			while (1);
 
@@ -1098,6 +1076,9 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 				row[cN] = X_1;
 
 				id_N++;
+
+				if (rN == rN_end)
+					break;
 			}
 			while (1);
 		}
@@ -1118,6 +1099,9 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 				row[cN] = X_1 - X_2;
 
 				id_N++;
+
+				if (rN == rN_end)
+					break;
 			}
 			while (1);
 		}
@@ -1138,6 +1122,9 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 				row[cN] = X_1 + X_2;
 
 				id_N++;
+
+				if (rN == rN_end)
+					break;
 			}
 			while (1);
 		}
@@ -1158,6 +1145,9 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 				row[cN] = X_1 * X_2;
 
 				id_N++;
+
+				if (rN == rN_end)
+					break;
 			}
 			while (1);
 		}
@@ -1178,12 +1168,15 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 				row[cN] = sqrt(X_1 * X_1 + X_2 * X_2);
 
 				id_N++;
+
+				if (rN == rN_end)
+					break;
 			}
 			while (1);
 		}
 		else if (mode == SUBTRACT_FILTER_DIFFERENCE) {
 
-			if (rS == pl->data[dN].head_N) {
+			if (rN_beg == pl->data[dN].head_N) {
 
 				pl->data[dN].sub[sN].op.filter.state = FP_NAN;
 			}
@@ -1204,6 +1197,9 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 				X_2 = X_1;
 
 				id_N++;
+
+				if (rN == rN_end)
+					break;
 			}
 			while (1);
 
@@ -1211,7 +1207,7 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 		}
 		else if (mode == SUBTRACT_FILTER_CUMULATIVE) {
 
-			if (rS == pl->data[dN].head_N) {
+			if (rN_beg == pl->data[dN].head_N) {
 
 				pl->data[dN].sub[sN].op.filter.state = 0.;
 			}
@@ -1235,6 +1231,9 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 				row[cN] = X_2;
 
 				id_N++;
+
+				if (rN == rN_end)
+					break;
 			}
 			while (1);
 
@@ -1264,12 +1263,15 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 				row[cN] = (fval_t) temp_1;
 
 				id_N++;
+
+				if (rN == rN_end)
+					break;
 			}
 			while (1);
 		}
 		else if (mode == SUBTRACT_FILTER_LOW_PASS) {
 
-			if (rS == pl->data[dN].head_N) {
+			if (rN_beg == pl->data[dN].head_N) {
 
 				pl->data[dN].sub[sN].op.filter.state = FP_NAN;
 			}
@@ -1300,6 +1302,9 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 				row[cN] = X_2;
 
 				id_N++;
+
+				if (rN == rN_end)
+					break;
 			}
 			while (1);
 
@@ -1307,7 +1312,7 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 		}
 		else if (mode == SUBTRACT_RESAMPLE) {
 
-			if (rS == pl->data[dN].head_N) {
+			if (rN_beg == pl->data[dN].head_N) {
 
 				/* FIXME: Unable to resample in real time.
 				 * */
@@ -1348,13 +1353,66 @@ void plotDataSubtract(plot_t *pl, int dN, int sN)
 				row[cN] = X_2;
 
 				id_N++;
+
+				if (rN == rN_end)
+					break;
 			}
 			while (1);
 		}
 
 		sN++;
 	}
-	while (sN < sE);
+	while (sN < sN_end);
+}
+
+void plotDataSubtractCompute(plot_t *pl, int dN, int sN)
+{
+	int		rN, id_N, rN_end;
+
+	if (dN < 0 || dN >= PLOT_DATASET_MAX) {
+
+		ERROR("Dataset number is out of range\n");
+		return ;
+	}
+
+	if (sN < 0 || sN >= PLOT_SUBTRACT) {
+
+		ERROR("Subtract number %i is out of range\n", sN);
+		return ;
+	}
+
+	if (pl->data[dN].sub_postponed != 0)
+		return ;
+
+	rN = pl->data[dN].head_N;
+	id_N = pl->data[dN].id_N;
+
+	rN_end = pl->data[dN].tail_N;
+
+	if (rN == rN_end)
+		return ;
+
+	plotDataSubtractWrite(pl, dN, sN, sN, rN, id_N, rN_end);
+}
+
+void plotDataSubtractResidual(plot_t *pl, int dN)
+{
+	int		rN, id_N, rN_end;
+
+	if (dN < 0 || dN >= PLOT_DATASET_MAX) {
+
+		ERROR("Dataset number is out of range\n");
+		return ;
+	}
+
+	rN = pl->data[dN].sub_N;
+	id_N = pl->data[dN].id_N;
+
+	rN_end = pl->data[dN].tail_N;
+
+	plotDataSubtractWrite(pl, dN, 0, PLOT_SUBTRACT, rN, id_N, rN_end);
+
+	pl->data[dN].sub_N = rN_end;
 }
 
 void plotDataSubtractClean(plot_t *pl)
@@ -1369,6 +1427,60 @@ void plotDataSubtractClean(plot_t *pl)
 
 				pl->data[dN].sub[N].busy = SUBTRACT_FREE;
 			}
+		}
+	}
+}
+
+void plotDataSubtractPostponed(plot_t *pl)
+{
+	int		dN;
+
+	for (dN = 0; dN < PLOT_DATASET_MAX; ++dN) {
+
+		if (pl->data[dN].column_N != 0) {
+
+			pl->data[dN].sub_postponed = 1;
+		}
+	}
+}
+
+void plotDataSubtractAlternate(plot_t *pl)
+{
+	int		dN, rN, id_N, rN_end, id_N_end, lCHUNK;
+
+	for (dN = 0; dN < PLOT_DATASET_MAX; ++dN) {
+
+		if (pl->data[dN].column_N != 0) {
+
+			rN = pl->data[dN].head_N;
+			id_N = pl->data[dN].id_N;
+
+			if (rN != pl->data[dN].tail_N) {
+
+				lCHUNK = (1UL << pl->data[dN].chunk_SHIFT);
+
+				rN_end = rN;
+				id_N_end = id_N;
+
+				do {
+					plotDataSkip(pl, dN, &rN_end, &id_N_end, lCHUNK);
+
+					plotDataSubtractWrite(pl, dN, 0, PLOT_SUBTRACT,
+							rN, id_N, rN_end);
+
+					rN = rN_end;
+					id_N = id_N_end;
+				}
+				while (rN != pl->data[dN].tail_N);
+			}
+		}
+	}
+
+	for (dN = 0; dN < PLOT_DATASET_MAX; ++dN) {
+
+		if (pl->data[dN].column_N != 0) {
+
+			pl->data[dN].sub_postponed = 0;
 		}
 	}
 }
@@ -2485,8 +2597,10 @@ void plotAxisScaleZoom(plot_t *pl, int aN, int origin, double zoom)
 	pl->axis[aN].lock_scale = LOCK_FREE;
 }
 
-void plotAxisScaleMove(plot_t *pl, int aN, int move)
+void plotAxisScaleMove(plot_t *pl, int aN, double move)
 {
+	double		span;
+
 	if (aN < 0 || aN >= PLOT_AXES_MAX) {
 
 		ERROR("Axis number is out of range\n");
@@ -2498,13 +2612,13 @@ void plotAxisScaleMove(plot_t *pl, int aN, int move)
 
 	if (pl->axis[aN].busy == AXIS_BUSY_X) {
 
-		pl->axis[aN].offset += (double) (move)
-			/ (double) (pl->viewport.max_x - pl->viewport.min_x);
+		span = (double) (pl->viewport.max_x - pl->viewport.min_x);
+		pl->axis[aN].offset += move / span;
 	}
 	else if (pl->axis[aN].busy == AXIS_BUSY_Y) {
 
-		pl->axis[aN].offset += (double) (move)
-			/ (double) (pl->viewport.min_y - pl->viewport.max_y);
+		span = (double) (pl->viewport.min_y - pl->viewport.max_y);
+		pl->axis[aN].offset += move / span;
 	}
 
 	pl->axis[aN].lock_scale = LOCK_FREE;
@@ -2598,7 +2712,7 @@ void plotAxisScaleGridAlign(plot_t *pl)
 
 void plotAxisScaleGridLock(plot_t *pl, int aN)
 {
-	double		scale, offset, fmin, fmax;
+	double		scale, offset, ymin, ymax, fmin, fmax;
 	int		bN;
 
 	if (aN < 0 || aN >= PLOT_AXES_MAX) {
@@ -2617,13 +2731,36 @@ void plotAxisScaleGridLock(plot_t *pl, int aN)
 		offset = offset * pl->axis[bN].scale + pl->axis[bN].offset;
 	}
 
-	fmin = - offset / scale;
-	fmax = 1. / scale + fmin;
+	ymin = - offset / scale;
+	ymax = 1. / scale + ymin;
+
+	if (plotAxisRangeGet(pl, aN, &fmin, &fmax) != 0) {
+
+		if (fmin == fmax) {
+
+			fmin += (double) - 1.;
+			fmax += (double) + 1.;
+		}
+
+		if (pl->axis[aN].busy == AXIS_BUSY_X) {
+
+			fmin = plotAxisConvBackward(pl, aN, plotAxisConvForward(pl, aN, fmin) - pl->layout_mark);
+			fmax = plotAxisConvBackward(pl, aN, plotAxisConvForward(pl, aN, fmax) + pl->layout_mark);
+		}
+		else if (pl->axis[aN].busy == AXIS_BUSY_Y) {
+
+			fmin = plotAxisConvBackward(pl, aN, plotAxisConvForward(pl, aN, fmin) + pl->layout_mark);
+			fmax = plotAxisConvBackward(pl, aN, plotAxisConvForward(pl, aN, fmax) - pl->layout_mark);
+		}
+
+		ymin = (ymin < fmin) ? fmin : ymin;
+		ymax = (ymax > fmax) ? fmax : ymax;
+	}
 
 	pl->axis[aN].lock_tick = 1;
 
-	pl->axis[aN].ruler_min = fmin;
-	pl->axis[aN].ruler_max = fmax;
+	pl->axis[aN].ruler_min = ymin;
+	pl->axis[aN].ruler_max = ymax;
 }
 
 typedef struct {
@@ -3581,11 +3718,11 @@ int plotGetSubtractTimeUnwrap(plot_t *pl, int dN, int cN)
 
 	sN = plotGetSubtractTimeUnwrapByMatch(pl, dN, cN);
 
-	if (sN == -1) {
+	if (sN < 0) {
 
 		sN = plotGetFreeSubtract(pl, dN);
 
-		if (sN == -1) {
+		if (sN < 0) {
 
 			ERROR("Unable to get free subtract\n");
 			return -1;
@@ -3594,7 +3731,7 @@ int plotGetSubtractTimeUnwrap(plot_t *pl, int dN, int cN)
 		pl->data[dN].sub[sN].busy = SUBTRACT_TIME_UNWRAP;
 		pl->data[dN].sub[sN].op.time.column_1 = cN;
 
-		plotDataSubtract(pl, dN, sN);
+		plotDataSubtractCompute(pl, dN, sN);
 	}
 
 	cN = sN + pl->data[dN].column_N;
@@ -3614,11 +3751,11 @@ int plotGetSubtractScale(plot_t *pl, int dN, int cN, double scale, double offset
 
 	sN = plotGetSubtractScaleByMatch(pl, dN, cN, scale, offset);
 
-	if (sN == -1) {
+	if (sN < 0) {
 
 		sN = plotGetFreeSubtract(pl, dN);
 
-		if (sN == -1) {
+		if (sN < 0) {
 
 			ERROR("Unable to get free subtract\n");
 			return -1;
@@ -3629,7 +3766,7 @@ int plotGetSubtractScale(plot_t *pl, int dN, int cN, double scale, double offset
 		pl->data[dN].sub[sN].op.scale.scale = scale;
 		pl->data[dN].sub[sN].op.scale.offset = offset;
 
-		plotDataSubtract(pl, dN, sN);
+		plotDataSubtractCompute(pl, dN, sN);
 	}
 
 	cN = sN + pl->data[dN].column_N;
@@ -3649,7 +3786,7 @@ int plotGetSubtractResample(plot_t *pl, int dN, int cN_X, int in_dN, int in_cN_X
 
 	sN = plotGetFreeSubtract(pl, dN);
 
-	if (sN == -1) {
+	if (sN < 0) {
 
 		ERROR("Unable to get free subtract\n");
 		return -1;
@@ -3661,7 +3798,7 @@ int plotGetSubtractResample(plot_t *pl, int dN, int cN_X, int in_dN, int in_cN_X
 	pl->data[dN].sub[sN].op.resample.column_in_Y = in_cN_Y;
 	pl->data[dN].sub[sN].op.resample.in_data_N = in_dN;
 
-	plotDataSubtract(pl, dN, sN);
+	plotDataSubtractCompute(pl, dN, sN);
 
 	cN = sN + pl->data[dN].column_N;
 
@@ -3692,7 +3829,7 @@ int plotGetSubtractBinary(plot_t *pl, int dN, int opSUB, int cN_1, int cN_2)
 
 	sN = plotGetFreeSubtract(pl, dN);
 
-	if (sN == -1) {
+	if (sN < 0) {
 
 		ERROR("Unable to get free subtract\n");
 		return -1;
@@ -3702,7 +3839,43 @@ int plotGetSubtractBinary(plot_t *pl, int dN, int opSUB, int cN_1, int cN_2)
 	pl->data[dN].sub[sN].op.binary.column_1 = cN_1;
 	pl->data[dN].sub[sN].op.binary.column_2 = cN_2;
 
-	plotDataSubtract(pl, dN, sN);
+	plotDataSubtractCompute(pl, dN, sN);
+
+	cN = sN + pl->data[dN].column_N;
+
+	return cN;
+}
+
+int plotGetSubtractFilter(plot_t *pl, int dN, int cN, int opSUB, double arg_1, double arg_2)
+{
+	int		sN;
+
+	if (dN < 0 || dN >= PLOT_DATASET_MAX) {
+
+		ERROR("Dataset number is out of range\n");
+		return -1;
+	}
+
+	if (cN < -1 || cN >= pl->data[dN].column_N + PLOT_SUBTRACT) {
+
+		ERROR("Column number %i is out of range\n", cN);
+		return -1;
+	}
+
+	sN = plotGetFreeSubtract(pl, dN);
+
+	if (sN < 0) {
+
+		ERROR("Unable to get free subtract\n");
+		return -1;
+	}
+
+	pl->data[dN].sub[sN].busy = opSUB;
+	pl->data[dN].sub[sN].op.filter.column_1 = cN;
+	pl->data[dN].sub[sN].op.filter.arg_1 = arg_1;
+	pl->data[dN].sub[sN].op.filter.arg_2 = arg_2;
+
+	plotDataSubtractCompute(pl, dN, sN);
 
 	cN = sN + pl->data[dN].column_N;
 
@@ -3801,7 +3974,7 @@ plotFigureSubtractAdd(plot_t *pl, int fN, int fN_1, int fN_2, int opSUB)
 				pl->figure[fN_2].column_X,
 				pl->figure[fN_2].column_Y);
 
-		if (cN_Y == -1) {
+		if (cN_Y < 0) {
 
 			ERROR("Unable to get resample subtract\n");
 			return 0;
@@ -3813,7 +3986,7 @@ plotFigureSubtractAdd(plot_t *pl, int fN, int fN_1, int fN_2, int opSUB)
 
 	cN_Y = plotGetSubtractBinary(pl, dN, opSUB, pl->figure[fN_1].column_Y, cN_Y);
 
-	if (cN_Y == -1) {
+	if (cN_Y < 0) {
 
 		return 0;
 	}
@@ -3865,7 +4038,7 @@ plotFigureSubtractAdd(plot_t *pl, int fN, int fN_1, int fN_2, int opSUB)
 
 void plotFigureSubtractFilter(plot_t *pl, int fN_1, int opSUB, double arg_1, double arg_2)
 {
-	int		fN, dN, sN, cN, aN;
+	int		fN, dN, cN, aN;
 
 	if (fN_1 < 0 || fN_1 >= PLOT_FIGURE_MAX) {
 
@@ -3873,31 +4046,23 @@ void plotFigureSubtractFilter(plot_t *pl, int fN_1, int opSUB, double arg_1, dou
 		return ;
 	}
 
+	dN = pl->figure[fN_1].data_N;
+	cN = pl->figure[fN_1].column_Y;
+
 	fN = plotGetFreeFigure(pl);
 
-	if (fN == -1) {
+	if (fN < 0) {
 
 		ERROR("Unable to get free figure to subtract\n");
 		return ;
 	}
 
-	dN = pl->figure[fN_1].data_N;
-	sN = plotGetFreeSubtract(pl, dN);
+	cN = plotGetSubtractFilter(pl, dN, cN, opSUB, arg_1, arg_2);
 
-	if (sN == -1) {
+	if (cN < 0) {
 
-		ERROR("Unable to get free subtract\n");
 		return ;
 	}
-
-	pl->data[dN].sub[sN].busy = opSUB;
-	pl->data[dN].sub[sN].op.filter.column_1 = pl->figure[fN_1].column_Y;
-	pl->data[dN].sub[sN].op.filter.arg_1 = arg_1;
-	pl->data[dN].sub[sN].op.filter.arg_2 = arg_2;
-
-	plotDataSubtract(pl, dN, sN);
-
-	cN = sN + pl->data[dN].column_N;
 
 	if (opSUB == SUBTRACT_FILTER_LOW_PASS) {
 
@@ -3941,7 +4106,8 @@ void plotFigureSubtractFilter(plot_t *pl, int fN_1, int opSUB, double arg_1, dou
 	}
 	else if (opSUB == SUBTRACT_FILTER_LOW_PASS) {
 
-		sprintf(pl->figure[fN].label, "L(%.2E): %.75s", arg_1, pl->figure[fN_1].label);
+		sprintf(pl->figure[fN].label, "L(%.2E): %.75s",
+				arg_1, pl->figure[fN_1].label);
 	}
 
 	pl->figure[fN].drawing = pl->figure[fN_1].drawing;
@@ -4128,7 +4294,7 @@ void plotFigureSubtractSwitch(plot_t *pl, int opSUB)
 		else {
 			fN = plotGetFreeFigure(pl);
 
-			if (fN == -1) {
+			if (fN < 0) {
 
 				ERROR("Unable to get free figure to subtract\n");
 				return ;
@@ -4209,7 +4375,7 @@ void plotFigureSubtractResample(plot_t *pl, int fN)
 						pl->figure[N].column_X,
 						pl->figure[N].column_Y);
 
-				if (cN_Y == -1) {
+				if (cN_Y < 0) {
 
 					ERROR("Unable to get resample subtract\n");
 					return ;
@@ -4310,7 +4476,7 @@ void plotFigureSubtractPolyfit(plot_t *pl, int fN_1, int poly_N1, int poly_N2)
 
 	fN = plotGetFreeFigure(pl);
 
-	if (fN == -1) {
+	if (fN < 0) {
 
 		ERROR("Unable to get free figure to subtract\n");
 		return ;
@@ -4319,7 +4485,7 @@ void plotFigureSubtractPolyfit(plot_t *pl, int fN_1, int poly_N1, int poly_N2)
 	dN = pl->figure[fN_1].data_N;
 	sN = plotGetFreeSubtract(pl, dN);
 
-	if (sN == -1) {
+	if (sN < 0) {
 
 		ERROR("Unable to get free subtract\n");
 		return ;
@@ -4365,7 +4531,7 @@ void plotFigureSubtractPolyfit(plot_t *pl, int fN_1, int poly_N1, int poly_N2)
 
 	pl->data[dN].sub[sN].op.polyfit.std = pl->lsq.std.m[0];
 
-	plotDataSubtract(pl, dN, sN);
+	plotDataSubtractCompute(pl, dN, sN);
 
 	cN = sN + pl->data[dN].column_N;
 	aN = pl->figure[fN_1].axis_Y;
@@ -4511,7 +4677,7 @@ void plotFigureExportCSV(plot_t *pl, const char *file)
 
 				aN = pl->figure[fN].axis_X;
 
-				plotLabelFusedCSV(labelbuf, "",
+				plotLabelFusedCSV(labelbuf, "time",
 						pl->axis[aN].label);
 			}
 			else {
@@ -5298,7 +5464,7 @@ plotDrawPalette(plot_t *pl)
 }
 
 static void
-plotDrawFigureTrial(plot_t *pl, int fN)
+plotDrawFigureTrial(plot_t *pl, int fN, int tTOP)
 {
 	const fval_t	*row;
 	double		scale_X, scale_Y, offset_X, offset_Y, im_MIN, im_MAX;
@@ -5469,7 +5635,7 @@ plotDrawFigureTrial(plot_t *pl, int fN)
 				line = 0;
 			}
 
-			if (id_N > top_N) {
+			if (id_N > top_N || SDL_GetTicks() > tTOP) {
 
 				pl->draw[fN].sketch = SKETCH_INTERRUPTED;
 				pl->draw[fN].rN = rN;
@@ -5560,7 +5726,7 @@ plotDrawFigureTrial(plot_t *pl, int fN)
 				plotDataChunkSkip(pl, dN, &rN, &id_N);
 			}
 
-			if (id_N > top_N) {
+			if (id_N > top_N || SDL_GetTicks() > tTOP) {
 
 				pl->draw[fN].sketch = SKETCH_INTERRUPTED;
 				pl->draw[fN].rN = rN;
@@ -5570,6 +5736,21 @@ plotDrawFigureTrial(plot_t *pl, int fN)
 		}
 		while (1);
 	}
+}
+
+int plotGetSketchLength(plot_t *pl)
+{
+	int		hN, length = 0;
+
+	hN = pl->sketch_list_todraw;
+
+	while (hN >= 0) {
+
+		length += pl->sketch[hN].length;
+		hN = pl->sketch[hN].linked;
+	}
+
+	return length;
 }
 
 static void
@@ -6562,7 +6743,10 @@ plotDrawFigureTrialAll(plot_t *pl)
 
 			if (fN >= 0) {
 
-				plotDrawFigureTrial(pl, fN);
+				if (SDL_GetTicks() > tTOP)
+					break;
+
+				plotDrawFigureTrial(pl, fN, tTOP);
 			}
 			else {
 				plotSketchGarbage(pl);
@@ -6571,7 +6755,7 @@ plotDrawFigureTrialAll(plot_t *pl)
 				break;
 			}
 		}
-		while (SDL_GetTicks() < tTOP);
+		while (1);
 	}
 }
 

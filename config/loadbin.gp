@@ -113,6 +113,25 @@ page "DQ Current"
 		drawing line 0
 		#drawing dot 4
 
+		# Subtract operation of the data columns.
+		#
+		# <1> Axis number (0 = X, 1 = Y)
+		# <2> Subtract operation ("sub", "add", "mul", "hyp").
+		# <3> Column number of the second parameter.
+		#
+		subtract 1 sub 12
+		#subtract 1 mul 10
+
+		# Filter operation of the data columns.
+		#
+		# <1> Axis number (0 = X, 1 = Y)
+		# <2> Filter operation ("diff", "csum", "bit", "lpf").
+		# <3> Column number of second argument.
+		#
+		filter 1 lpf 0.1
+		#filter 1 diff
+		#filter 1 bit 2 5
+
 	# Define slave axis.
 	#
 	# <1> Number of the axis to be slave.

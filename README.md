@@ -12,7 +12,7 @@ claim to replace all other plotters.
 * Simple math operations like subtraction or polynomial fitting.
 * Data sampling tool to extract accurate numeric values.
 * Static (from file) and dynamic (from UI) configuration.
-* Export current view (PNG, SVG, CSV).
+* Export screen or data (PNG, SVG, CSV).
 
 The main platforms are GNU/Linux and Windows. GP can be embedded to any
 third-party SDL2 based application.
@@ -59,7 +59,7 @@ different files in a single plot.
 Take a look into configuration examples that describes most of the options.
 
 * [global.gp](config/global.gp)
-* [loadfloat.gp](config/loadfloat.gp)
+* [loadbin.gp](config/loadbin.gp)
 * [loadcsv.gp](config/loadcsv.gp)
 
 ## Live configuration
@@ -71,7 +71,6 @@ these examples.
 
 ## TODO
 
-* Add all subtract operations to the GP configuration file.
 * Add the command line options to control GP.
-* Optimize line drawing performance on the random test.
+* Optimize line drawing performance even more.
 
