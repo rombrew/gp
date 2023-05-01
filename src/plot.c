@@ -5488,13 +5488,28 @@ plotDrawPalette(plot_t *pl)
 	palette[10] = sch->plot_text;
 }
 
+static int
+plotGetTickCached(plot_t *pl)
+{
+	if (pl->tick_skip > 0) {
+
+		pl->tick_skip--;
+	}
+	else {
+		pl->tick_cached = SDL_GetTicks();
+		pl->tick_skip = 63;
+	}
+
+	return pl->tick_cached;
+}
+
 static void
 plotDrawFigureTrial(plot_t *pl, int fN, int tTOP)
 {
 	const fval_t	*row;
 	double		scale_X, scale_Y, offset_X, offset_Y, im_MIN, im_MAX;
 	double		X, Y, last_X, last_Y, im_X, im_Y, last_im_X, last_im_Y;
-	int		dN, rN, xN, yN, xNR, yNR, aN, bN, id_N, top_N, kN, kN_cached;
+	int		dN, rN, xN, yN, xNR, yNR, aN, bN, id_N, id_N_top, kN, kN_cached;
 	int		job, skipped, line, rc, ncolor, fdrawing, fwidth;
 
 	ncolor = (pl->figure[fN].hidden != 0) ? 9 : fN + 1;
@@ -5542,7 +5557,7 @@ plotDrawFigureTrial(plot_t *pl, int fN, int tTOP)
 	rN = pl->draw[fN].rN;
 	id_N = pl->draw[fN].id_N;
 
-	top_N = id_N + (1UL << pl->data[dN].chunk_SHIFT);
+	id_N_top = id_N + (1UL << pl->data[dN].chunk_SHIFT);
 	kN_cached = -1;
 
 	plotSketchDataChunkSetUp(pl, fN);
@@ -5660,7 +5675,7 @@ plotDrawFigureTrial(plot_t *pl, int fN, int tTOP)
 				line = 0;
 			}
 
-			if (id_N > top_N || SDL_GetTicks() > tTOP) {
+			if (id_N > id_N_top || plotGetTickCached(pl) > tTOP) {
 
 				pl->draw[fN].sketch = SKETCH_INTERRUPTED;
 				pl->draw[fN].rN = rN;
@@ -5751,7 +5766,7 @@ plotDrawFigureTrial(plot_t *pl, int fN, int tTOP)
 				plotDataChunkSkip(pl, dN, &rN, &id_N);
 			}
 
-			if (id_N > top_N || SDL_GetTicks() > tTOP) {
+			if (id_N > id_N_top || plotGetTickCached(pl) > tTOP) {
 
 				pl->draw[fN].sketch = SKETCH_INTERRUPTED;
 				pl->draw[fN].rN = rN;

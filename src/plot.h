@@ -367,6 +367,9 @@ typedef struct {
 
 	int			draw_in_progress;
 
+	int			tick_cached;
+	int			tick_skip;
+
 	struct {
 
 		int		figure_N;
