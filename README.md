@@ -10,9 +10,9 @@ claim to replace all other plotters.
 * Multiple axes are supported by design.
 * Real-time plotting from multiple asynchronous sources.
 * Simple math operations like subtraction or polynomial fitting.
-* Data sampling tool to extract accurate numeric values.
+* Data pick tool to extract accurate numeric values.
 * Static (from file) and dynamic (from UI) configuration.
-* Export screen or data (PNG, SVG, CSV).
+* Export screen or data to the file (PNG, SVG, CSV).
 
 The main platforms are GNU/Linux and Windows. GP can be embedded to any
 third-party SDL2 based application.

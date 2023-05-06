@@ -1,5 +1,5 @@
 /*
-   Graph Plotter for numerical data analysis.
+   Graph Plotter is a tool to analyse numerical data.
    Copyright (C) 2023 Roman Belov <romblv@gmail.com>
 
    This program is free software: you can redistribute it and/or modify
@@ -46,17 +46,17 @@ svg_t *svgOpenNew(const char *file, int width, int height)
 	fprintf(g->fd, "<svg xmlns=\"http://www.w3.org/2000/svg\" "
 			"width=\"%dpx\" height=\"%dpx\"><g>\n", width, height);
 
-	g->_line_open = 0;
+	g->line_open = 0;
 
 	return g;
 }
 
 void svgClose(svg_t *g)
 {
-	if (g->_line_open == 1) {
+	if (g->line_open != 0) {
 
 		fprintf(g->fd, "\"/>\n");
-		g->_line_open = 0;
+		g->line_open = 0;
 	}
 
 	fprintf(g->fd, "</g></svg>\n");
@@ -67,23 +67,23 @@ void svgClose(svg_t *g)
 
 void svgDrawLine(svg_t *g, double xs, double ys, double xe, double ye, svgCol_t col, int h, int d, int s)
 {
-	if (g->_line_open == 1) {
+	if (g->line_open != 0) {
 
-		if (xs == g->_last_x && ys == g->_last_y) {
+		if (xs == g->last_x && ys == g->last_y) {
 
 			fprintf(g->fd, " %.1f,%.1f", xe, ye);
 		}
-		else if (xe == g->_last_x && ye == g->_last_y) {
+		else if (xe == g->last_x && ye == g->last_y) {
 
 			fprintf(g->fd, " %.1f,%.1f", xs, ys);
 		}
 		else {
 			fprintf(g->fd, "\"/>\n");
-			g->_line_open = 0;
+			g->line_open = 0;
 		}
 	}
 
-	if (g->_line_open == 0) {
+	if (g->line_open == 0) {
 
 		if (d == 0) {
 
@@ -101,19 +101,19 @@ void svgDrawLine(svg_t *g, double xs, double ys, double xe, double ye, svgCol_t 
 					xs, ys, xe, ye);
 		}
 
-		g->_line_open = 1;
+		g->line_open = 1;
 	}
 
-	g->_last_x = xe;
-	g->_last_y = ye;
+	g->last_x = xe;
+	g->last_y = ye;
 }
 
 void svgDrawRect(svg_t *g, double xs, double ys, double xe, double ye, svgCol_t col)
 {
-	if (g->_line_open == 1) {
+	if (g->line_open != 0) {
 
 		fprintf(g->fd, "\"/>\n");
-		g->_line_open = 0;
+		g->line_open = 0;
 	}
 
 	fprintf(g->fd, "<path style=\"fill:#%06x;stroke:none\" "
@@ -123,10 +123,10 @@ void svgDrawRect(svg_t *g, double xs, double ys, double xe, double ye, svgCol_t 
 
 void svgDrawCircle(svg_t *g, double xs, double ys, double r, svgCol_t col)
 {
-	if (g->_line_open == 1) {
+	if (g->line_open != 0) {
 
 		fprintf(g->fd, "\"/>\n");
-		g->_line_open = 0;
+		g->line_open = 0;
 	}
 
 	fprintf(g->fd, "<circle style=\"fill:#%06x;stroke:none\" "
@@ -136,10 +136,10 @@ void svgDrawCircle(svg_t *g, double xs, double ys, double r, svgCol_t col)
 
 void svgDrawText(svg_t *g, double xs, double ys, const char *text, svgCol_t col, int flags)
 {
-	if (g->_line_open == 1) {
+	if (g->line_open != 0) {
 
 		fprintf(g->fd, "\"/>\n");
-		g->_line_open = 0;
+		g->line_open = 0;
 	}
 
 	if (flags & TEXT_VERTICAL) {

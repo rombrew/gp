@@ -37,7 +37,7 @@ chunk 4096
 
 # How long to wait (in milliseconds) for the new data in regular files.
 #
-timeout 1000
+timeout 5000
 
 # Data length (number of lines to allocate) that is applied by default to
 # non-regular files like serial ports.
@@ -60,13 +60,13 @@ colorscheme 0
 #
 antialiasing 1
 
-# Draw UI text with solid font (0 = blended, 1 = solid).
+# Draw UI text with blended font (0 = solid, 1 = blended).
 #
-solidfont 0
+blendfont 1
 
-# Draw UI with increased line thickness (0 = default, 1 = bold line).
+# Draw UI and grid with specified thickness (0 = thin, 1 = bold, 2 = extra bold).
 #
-thickness 0
+thickness 1
 
 # Default figure drawing.
 #
@@ -79,10 +79,10 @@ drawing line 2
 #
 shortfilename 1
 
-# Screen draw time upper bound (in milliseconds) after that antialiasing mode
-# is forced to NONE.
+# Enable automatic switching to the fast drawing method in case of screen
+# drawing time is longer than specified (in milliseconds).
 #
-drawboost 200
+fastdraw 200
 
 # Interpolation method of resample operation (0 = nearest, 1 = linear).
 #
