@@ -474,7 +474,7 @@ void drawDash(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs, doubl
 	if (g != NULL) {
 
 		svgDrawLine(g, fxs, fys, fxe, fye, (svgCol_t) col,
-				1 + dw->thickness, dash, space);
+				1 + dw->thickness, dash + dw->thickness, space);
 	}
 
 	xs = (int) fxs;
@@ -611,37 +611,35 @@ void drawLineCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 
 			for (x += lcb.min_x; x <= lcb.max_x; ++x) {
 
-				if (lw1 < l) {
+				if (lw2 <= 0) {
+
+					ldxs = x * 16 - xs + 8;
+					ldys = y * 16 - ys + 8;
+
+					la = ldxs * ldxs + ldys * ldys;
+
+					if (la <= r) {
+
+						*(canvas + x) = ncol;
+					}
+				}
+				else if (lw3 <= 0) {
+
+					ldxe = x * 16 - xe + 8;
+					ldye = y * 16 - ye + 8;
+
+					la = ldxe * ldxe + ldye * ldye;
+
+					if (la <= r) {
+
+						*(canvas + x) = ncol;
+					}
+				}
+				else if (lw1 < l) {
 
 					if (lw1 >= - l) {
 
-						if (lw2 <= 0) {
-
-							ldxs = x * 16 - xs + 8;
-							ldys = y * 16 - ys + 8;
-
-							la = ldxs * ldxs + ldys * ldys;
-
-							if (la <= r) {
-
-								*(canvas + x) = ncol;
-							}
-						}
-						else if (lw3 <= 0) {
-
-							ldxe = x * 16 - xe + 8;
-							ldye = y * 16 - ye + 8;
-
-							la = ldxe * ldxe + ldye * ldye;
-
-							if (la <= r) {
-
-								*(canvas + x) = ncol;
-							}
-						}
-						else {
-							*(canvas + x) = ncol;
-						}
+						*(canvas + x) = ncol;
 					}
 				}
 				else {
@@ -695,37 +693,35 @@ void drawLineCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 
 				touch = 0;
 
-				if (lw1 < l) {
+				if (lw2 <= 0) {
+
+					ldxs = x * 16 - xs + 8;
+					ldys = y * 16 - ys + 8;
+
+					la = ldxs * ldxs + ldys * ldys;
+
+					if (la <= r) {
+
+						touch = 1;
+					}
+				}
+				else if (lw3 <= 0) {
+
+					ldxe = x * 16 - xe + 8;
+					ldye = y * 16 - ye + 8;
+
+					la = ldxe * ldxe + ldye * ldye;
+
+					if (la <= r) {
+
+						touch = 1;
+					}
+				}
+				else if (lw1 < l) {
 
 					if (lw1 >= - l) {
 
-						if (lw2 <= 0) {
-
-							ldxs = x * 16 - xs + 8;
-							ldys = y * 16 - ys + 8;
-
-							la = ldxs * ldxs + ldys * ldys;
-
-							if (la <= r) {
-
-								touch = 1;
-							}
-						}
-						else if (lw3 <= 0) {
-
-							ldxe = x * 16 - xe + 8;
-							ldye = y * 16 - ye + 8;
-
-							la = ldxe * ldxe + ldye * ldye;
-
-							if (la <= r) {
-
-								touch = 1;
-							}
-						}
-						else {
-							touch = 2;
-						}
+						touch = 2;
 					}
 				}
 				else {
@@ -950,37 +946,35 @@ void drawLineCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 
 				touch = 0;
 
-				if (lw1 < l) {
+				if (lw2 <= 0) {
+
+					ldxs = x * 16 - xs + 8;
+					ldys = y * 16 - ys + 8;
+
+					la = ldxs * ldxs + ldys * ldys;
+
+					if (la <= r) {
+
+						touch = 1;
+					}
+				}
+				else if (lw3 <= 0) {
+
+					ldxe = x * 16 - xe + 8;
+					ldye = y * 16 - ye + 8;
+
+					la = ldxe * ldxe + ldye * ldye;
+
+					if (la <= r) {
+
+						touch = 1;
+					}
+				}
+				else if (lw1 < l) {
 
 					if (lw1 >= - l) {
 
-						if (lw2 <= 0) {
-
-							ldxs = x * 16 - xs + 8;
-							ldys = y * 16 - ys + 8;
-
-							la = ldxs * ldxs + ldys * ldys;
-
-							if (la <= r) {
-
-								touch = 1;
-							}
-						}
-						else if (lw3 <= 0) {
-
-							ldxe = x * 16 - xe + 8;
-							ldye = y * 16 - ye + 8;
-
-							la = ldxe * ldxe + ldye * ldye;
-
-							if (la <= r) {
-
-								touch = 1;
-							}
-						}
-						else {
-							touch = 2;
-						}
+						touch = 2;
 					}
 				}
 				else {
@@ -1362,7 +1356,7 @@ void drawDashCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 
 			svgDrawLine(g, _fxs, _fys, _fxe, _fye,
 					(svgCol_t) dw->palette[ncol],
-					thickness, dash, space);
+					thickness, dash + thickness, space);
 		}
 	}
 
@@ -1383,7 +1377,7 @@ void drawDashCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 	h = (thickness > 0) ? thickness * 8 : 5;
 	h += (dw->antialiasing != DRAW_SOLID) ? 12 : 0;
 
-	m = dash * 16;
+	m = (dash + thickness) * 16;
 	f = m + space * 16;
 
 	if (xs < xe) {
@@ -1414,7 +1408,6 @@ void drawDashCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 	e = (xs - xe) * (xs - xe) + (ys - ye) * (ys - ye);
 	d = (int) sqrtf((float) e);
 
-	d = (d < 1) ? 1 : d;
 	l = d * h;
 
 	w1 = (ys - ye) * (lcb.min_x * 16 - xe + 8) - (xs - xe) * (lcb.min_y * 16 - ye + 8);
@@ -1904,43 +1897,41 @@ int drawLineTrial(draw_t *dw, clipBox_t *cb, double fxs, double fys,
 
 			for (x += lcb.min_x; x <= lcb.max_x; ++x) {
 
-				if (lw1 < l) {
+				if (lw2 <= 0) {
+
+					ldxs = x * 16 - xs + 8;
+					ldys = y * 16 - ys + 8;
+
+					la = ldxs * ldxs + ldys * ldys;
+
+					if (la <= r) {
+
+						if (*(trial + x) != ncol) {
+							*(trial + x) = ncol;
+							fill++; }
+					}
+				}
+				else if (lw3 <= 0) {
+
+					ldxe = x * 16 - xe + 8;
+					ldye = y * 16 - ye + 8;
+
+					la = ldxe * ldxe + ldye * ldye;
+
+					if (la <= r) {
+
+						if (*(trial + x) != ncol) {
+							*(trial + x) = ncol;
+							fill++; }
+					}
+				}
+				else if (lw1 < l) {
 
 					if (lw1 >= - l) {
 
-						if (lw2 <= 0) {
-
-							ldxs = x * 16 - xs + 8;
-							ldys = y * 16 - ys + 8;
-
-							la = ldxs * ldxs + ldys * ldys;
-
-							if (la <= r) {
-
-								if (*(trial + x) != ncol) {
-									*(trial + x) = ncol;
-									fill++; }
-							}
-						}
-						else if (lw3 <= 0) {
-
-							ldxe = x * 16 - xe + 8;
-							ldye = y * 16 - ye + 8;
-
-							la = ldxe * ldxe + ldye * ldye;
-
-							if (la <= r) {
-
-								if (*(trial + x) != ncol) {
-									*(trial + x) = ncol;
-									fill++; }
-							}
-						}
-						else {
-							if (*(trial + x) != ncol) {
-								*(trial + x) = ncol;
-								fill++; }
-						}
+						if (*(trial + x) != ncol) {
+							*(trial + x) = ncol;
+							fill++; }
 					}
 				}
 				else {
@@ -1993,37 +1984,35 @@ int drawLineTrial(draw_t *dw, clipBox_t *cb, double fxs, double fys,
 
 				touch = 0;
 
-				if (lw1 < l) {
+				if (lw2 <= 0) {
+
+					ldxs = x * 16 - xs + 8;
+					ldys = y * 16 - ys + 8;
+
+					la = ldxs * ldxs + ldys * ldys;
+
+					if (la <= r) {
+
+						touch = 1;
+					}
+				}
+				else if (lw3 <= 0) {
+
+					ldxe = x * 16 - xe + 8;
+					ldye = y * 16 - ye + 8;
+
+					la = ldxe * ldxe + ldye * ldye;
+
+					if (la <= r) {
+
+						touch = 1;
+					}
+				}
+				else if (lw1 < l) {
 
 					if (lw1 >= - l) {
 
-						if (lw2 <= 0) {
-
-							ldxs = x * 16 - xs + 8;
-							ldys = y * 16 - ys + 8;
-
-							la = ldxs * ldxs + ldys * ldys;
-
-							if (la <= r) {
-
-								touch = 1;
-							}
-						}
-						else if (lw3 <= 0) {
-
-							ldxe = x * 16 - xe + 8;
-							ldye = y * 16 - ye + 8;
-
-							la = ldxe * ldxe + ldye * ldye;
-
-							if (la <= r) {
-
-								touch = 1;
-							}
-						}
-						else {
-							touch = 2;
-						}
+						touch = 2;
 					}
 				}
 				else {

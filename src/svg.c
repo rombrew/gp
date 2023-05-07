@@ -94,7 +94,7 @@ void svgDrawLine(svg_t *g, double xs, double ys, double xe, double ye, svgCol_t 
 		}
 		else {
 			fprintf(g->fd, "<path style=\"fill:none;stroke:#%06x;stroke-width:%.1f;"
-					"stroke-linejoin:round;stroke-linecap:round;"
+					"stroke-linejoin:round;stroke-linecap:butt;"
 					"stroke-dasharray:%d,%d\" "
 					"d=\"M %.1f,%.1f %.1f,%.1f",
 					(int) (col & 0xFFFFFF), (h != 0) ? h : 0.5, d, s,

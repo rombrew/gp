@@ -1307,12 +1307,13 @@ gpTakeScreen(gp_t *gp)
 #ifdef _WINDOWS
 void legacy_SetClipboard(SDL_Surface *surface)
 {
-	long		length = 9437184UL;
+	long		length;
 	void		*mBMP;
 
 	SDL_RWops	*rwops;
 	HGLOBAL		hDIB;
 
+	length = surface->pitch * surface->h + 1048576UL;
 	mBMP = malloc(length);
 
 	if (mBMP == NULL) {
