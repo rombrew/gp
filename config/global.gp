@@ -68,6 +68,10 @@ blendfont 1
 #
 thickness 1
 
+# Gamma correction drawing in case of antialiasing (in percent).
+#
+gamma 50
+
 # Default figure drawing.
 #
 # <1> Name of the drawing ("line", "dash", "dot").
