@@ -85,7 +85,7 @@ typedef struct {
 	pixmap;
 
 	colType_t	palette[16];
-	int		ltgamma[16];
+	Uint8		ltgamma[64];
 }
 draw_t;
 

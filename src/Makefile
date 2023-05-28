@@ -4,6 +4,8 @@ TARGET	= $(BUILD)/gp
 
 CC	= gcc
 LD	= gcc
+STRIP	= strip -s
+GDB	= gdb
 MK	= mkdir -p
 RM      = rm -rf
 
@@ -40,6 +42,14 @@ $(BUILD)/%.o: %.c
 $(TARGET): $(GP_OBJS)
 	@ echo "  LD    " $(notdir $@)
 	@ $(LD) $(CFLAGS) -o $@ $^ $(LFLAGS)
+
+debug: $(TARGET)
+	@ echo "  GDB	" $(notdir $<)
+	@ $(GDB) $<
+
+strip: $(TARGET)
+	@ echo "  STRIP " $(notdir $<)
+	@ $(STRIP) $<
 
 clean:
 	@ echo "  CLEAN "

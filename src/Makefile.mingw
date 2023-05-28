@@ -51,10 +51,11 @@ $(BUILD)/%.o: %.c
 $(TARGET): $(GP_OBJS)
 	@ echo "  LD    " $(notdir $@)
 	@ $(LD) $(CFLAGS) -o $@ $^ $(LFLAGS)
+	@ echo "  STRIP " $(notdir $@)
+	@ $(STRIP) $@
 
 zip: $(TARGET)
 	@ echo "  ZIP   " $(notdir $<)
-	@ $(STRIP) $<
 	@ zip -j9 $(BUILD)/gp-$(ARCH)-$(shell hg id -b)-$(shell hg id -n).zip $<
 
 clean:
