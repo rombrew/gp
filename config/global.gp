@@ -79,12 +79,12 @@ gamma 50
 #
 drawing line 2
 
-# How to print filenames in UI (0 = full length, <n> = cut to \n dirs in path).
+# Define how to print filenames in UI (0 = full length, <n> = cut to \n dirs in path).
 #
 shortfilename 1
 
 # Enable automatic switching to the fast drawing method in case of screen
-# drawing time is longer than specified (in milliseconds).
+# drawing time is longer than specified time (in milliseconds).
 #
 fastdraw 200
 
@@ -92,11 +92,15 @@ fastdraw 200
 #
 interpolation 1
 
+# Define the time gap threshold to use with unwrap feature.
+#
+defungap 10
+
 # Define the number of significant digits in numerical printouts.
 #
 precision 9
 
 # Use in RAM dataset compression by LZ4 algorithm.
 #
-lz4_compress 0
+lz4_compress 1
 

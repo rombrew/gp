@@ -15,7 +15,7 @@ timecol -1
 
 # Load CSV text file.
 #
-load 0 0 text "tel20hz.txt"
+load 0 0 text "tlmgrab.csv"
 
 # Specify the time group with default scale and label.
 #

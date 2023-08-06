@@ -35,15 +35,14 @@ To compile GP you could use Makefile from source directory.
 
 ## Usage
 
-You can just use GP with a plain text file or CSV table.
+You can just use GP with a plain text files or CSV tables.
 
-	$ gp file.txt
+	$ gp file1.txt file2.txt ...
 
 Note that first valid line of plain text (or CSV) file will be interpreted as
-**name@unit** description of the columns. Here is a simple example of the plain
-text file.
+description of the columns. Here is a simple example of the plain text file.
 
-	$ cat file.txt
+	$ cat file1.txt
 	time@s  var1@a  var2@v  hexpar@
 	 0.1     0.0     0.0     0x01
 	 0.2     1.1     2.1     0x13
@@ -64,13 +63,14 @@ Take a look into configuration examples that describes most of the options.
 
 ## Live configuration
 
-You can make real-time plot from raw serial device or from logfiles. Check
-these examples.
+You can make real-time plot from raw serial device or from growing logfiles.
 
 * [serial.gp](config/serial.gp)
 
 ## TODO
 
-* Add the command line options to control GP.
+* Improve embedded API.
+* Add a dependency based subtract calculation.
 * Optimize line drawing performance even more.
+
 

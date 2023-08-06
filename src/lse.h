@@ -24,10 +24,15 @@
  * */
 #define LSE_FULL_MAX			10
 
-/* Define the maximal number of cascades. Large value gives a more precision on
- * large datasets but consumes more memory. Reasonable values are from 2 to 5.
+/* Define the maximal number of cascades. A large value gives greater precision
+ * on large datasets but consumes more memory. Reasonable values are from 2 to 4.
  * */
 #define LSE_CASCADE_MAX			4
+
+/* Define whether to use fast Givens transformation in QR update. Typycal this
+ * is useful for fairly large matrix sizes. Also consumes a few of memory.
+ * */
+#define LSE_FAST_TRANSFORM		1
 
 /* Define native floating-point type to use inside of LSE.
  * */
@@ -43,9 +48,19 @@ typedef struct {
 	 * */
 	int		keep;
 
+	/* The marker of lazy merging.
+	 * */
+	int		lazy;
+
 	/* Content of the upper-triangular matrix.
 	 * */
 	lse_float_t	*m;
+
+#if LSE_FAST_TRANSFORM != 0
+	/* Content of the scale diagonal matrix.
+	 * */
+	lse_float_t	*d;
+#endif /* LSE_FAST_TRANSFORM */
 }
 lse_upper_t;
 
@@ -77,8 +92,8 @@ typedef struct {
 	int		n_threshold;
 	int		n_total;
 
-	/* \R(i) is row-major upper-triangular matrix with block structure as
-	 * shown. We store only the upper triangular elements.
+	/* \R(i) is row-major upper-triangular matrix array with block
+	 * structure as shown. We store only the upper triangular elements.
 	 *
 	 *                                 [0 1 2 3]
 	 *                                 [  4 5 6]
@@ -92,22 +107,31 @@ typedef struct {
 	 * */
 	lse_upper_t	rm[LSE_CASCADE_MAX];
 
-	/* LS solution \sol is a column-major matrix.
+	/* LS solution \b is a column-major matrix.
 	 * */
 	lse_row_t	sol;
 
-	/* LS standard deviation of \z row-vector.
+	/* Standard deviation of \z row-vector.
 	 * */
 	lse_row_t	std;
 
-	/* Approximate largest and smallest singular values of \Rx.
+	/* Approximate extremal singular values of \Rx.
 	 * */
-	lse_float_t	l_max;
-	lse_float_t	l_min;
+	struct {
+
+		lse_float_t	min;
+		lse_float_t	max;
+	}
+	esv;
 
 	/* We allocate the maximal amount of memory.
 	 * */
 	lse_float_t	vm[LSE_CASCADE_MAX * LSE_FULL_MAX * (LSE_FULL_MAX + 1) / 2
+
+#if LSE_FAST_TRANSFORM != 0
+			 + LSE_CASCADE_MAX * LSE_FULL_MAX
+#endif /* LSE_FAST_TRANSFORM */
+
 			 + LSE_FULL_MAX * LSE_FULL_MAX / 4 + LSE_FULL_MAX / 2 + 1];
 }
 lse_t;
@@ -121,24 +145,19 @@ int lse_getsize(int n_cascades, int n_full);
  * */
 void lse_construct(lse_t *ls, int n_cascades, int n_len_of_x, int n_len_of_z);
 
-/* The function updates \R with a new data row-vector \v which contains \x and
- * \z concatenated. We does QR update of \R by orthogonal transformation.
+/* The function updates \R with a new data row-vector \xz which contains \x and
+ * \z concatenated. We does QR update of \R by orthogonal transformation. Note
+ * that the contents of \xz will be modified.
  * */
-void lse_insert(lse_t *ls, lse_float_t *v);
-
-/* The function updates \R with a new data row-vector \v which contains \x and
- * \z concatenated. This function uses row reduction to solve full-rank system
- * of linear equations.
- * */
-void lse_reduce(lse_t *ls, lse_float_t *v);
+void lse_insert(lse_t *ls, lse_float_t *xz);
 
 /* The function introduces ridge regularization with \la. Most reasonable \la
- * value is \n_len_of_x * \l_max * \machine_epsilon.
+ * value is \n_len_of_x * \esv.max * \machine_epsilon.
  * */
 void lse_ridge(lse_t *ls, lse_float_t la);
 
 /* The function scales all cascades of \R with forgetting factor \la. It is
- * reasonable to use this function with only 1 cascade allocated.
+ * reasonable to use this function with only one cascade allocated.
  * */
 void lse_forget(lse_t *ls, lse_float_t la);
 
@@ -152,10 +171,14 @@ void lse_std(lse_t *ls);
 
 /* The function estimates the approximate largest and smallest singular values
  * of \Rx in \n_approx iterations. A rather computationally heavy function if
- * \n_approx is large. You can calculate the conditional number or detect a
- * rank deficiency based on retrieved values.
+ * \n_approx is large (most reasonable is 4). You can calculate the conditional
+ * number or detect a rank deficiency based on retrieved values.
+ *
+ * WARNING: You need to provide enough memory to use this function. We use
+ * empty cascades of \R as temporal storage.
+ *
  * */
-void lse_cond(lse_t *ls, int n_approx);
+void lse_esv(lse_t *ls, int n_approx);
 
 #endif /* _H_LSE_ */
 
