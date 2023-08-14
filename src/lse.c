@@ -367,7 +367,7 @@ void lse_ridge(lse_t *ls, lse_float_t la)
 #if LSE_FAST_TRANSFORM != 0
 		lse_qrupdate(ls, ls->rm, xz, (lse_float_t) 1, i);
 #else /* LSE_FAST_TRANSFORM */
-		lse_qrupdate(ls, ls->rm, xz, 0);
+		lse_qrupdate(ls, ls->rm, xz, i);
 #endif
 	}
 }

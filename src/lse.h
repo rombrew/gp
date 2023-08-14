@@ -29,7 +29,7 @@
  * */
 #define LSE_CASCADE_MAX			4
 
-/* Define whether to use fast Givens transformation in QR update. Typycal this
+/* Define whether to use fast Givens transformation in QR update. Typical this
  * is useful for fairly large matrix sizes. Also consumes a few of memory.
  * */
 #define LSE_FAST_TRANSFORM		1

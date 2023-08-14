@@ -1140,9 +1140,10 @@ plotDataSubtractWrite(plot_t *pl, int dN, int sN, int rN_beg, int id_N_beg, int 
 		cN2 = pl->data[dN].sub[sN].op.median.column_2;
 		cN3 = pl->data[dN].sub[sN].op.median.column_3;
 
+		offset = pl->data[dN].sub[sN].op.median.offset;
+
 		if (pl->data[dN].sub[sN].op.median.unwrap != 0) {
 
-			offset = pl->data[dN].sub[sN].op.median.offset;
 			X3 = (fval_t) pl->data[dN].sub[sN].op.median.prev[0];
 			X4 = (fval_t) pl->data[dN].sub[sN].op.median.prev[1];
 		}
@@ -1197,9 +1198,10 @@ plotDataSubtractWrite(plot_t *pl, int dN, int sN, int rN_beg, int id_N_beg, int 
 		}
 		while (1);
 
+		pl->data[dN].sub[sN].op.median.offset = offset;
+
 		if (pl->data[dN].sub[sN].op.median.unwrap != 0) {
 
-			pl->data[dN].sub[sN].op.median.offset = offset;
 			pl->data[dN].sub[sN].op.median.prev[0] = (double) X3;
 			pl->data[dN].sub[sN].op.median.prev[1] = (double) X4;
 		}
