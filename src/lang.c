@@ -170,7 +170,7 @@ void langFill(lang_t *la, int lang)
 			"    Scale on X ...\0"
 			"    Scale on Y ...\0"
 			"    Transparency mode   [ %s ]\0"
-			"    Compact legend      [ %s ]\0"
+			"    Hidden legend       [ %s ]\0"
 
 			"\0";
 
@@ -344,7 +344,7 @@ void langFill(lang_t *la, int lang)
 			"    Масштаб по X ...\0"
 			"    Масштаб по Y ...\0"
 			"    Режим прозрачности   [ %s ]\0"
-			"    Компактная легенда   [ %s ]\0"
+			"    Скрытая легенда      [ %s ]\0"
 
 			"\0";
 

@@ -361,7 +361,7 @@ typedef struct {
 	int			rcache_wipe_data_N;
 	int			rcache_wipe_chunk_N;
 
-	int			legend_compact;
+	int			legend_hidden;
 	int			legend_X;
 	int			legend_Y;
 	int			legend_size_X;

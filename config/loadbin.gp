@@ -101,13 +101,19 @@ page "DQ Current"
 		#
 		map 0 2
 
-		# Special scale of the figure data columns.
+		# Special scale of the figure data column on X.
 		#
-		# <1> Axis number (0 = X, 1 = Y)
-		# <2> Scale.
-		# <3> Offset.
+		# <1> Scale.
+		# <2> Offset.
 		#
-		scale 1 1.0 0.5
+		xscale 1.0 -0.011
+
+		# Special scale of the figure data column on Y.
+		#
+		# <1> Scale.
+		# <2> Offset.
+		#
+		yscale 1.0 0.5
 
 		# Special figure drawing.
 		#
@@ -117,16 +123,16 @@ page "DQ Current"
 		drawing line 4
 		#drawing dot 4
 
-		# Filter operation of the figure data columns.
+		# Filter operation of the figure data column (on X and Y).
 		#
-		# <1> Axis number (0 = X, 1 = Y)
-		# <2> Filter operation ("diff", "csum", "bf", "low", "med").
-		# <3-4> Operation arguments.
+		# <1> Filter operation ("diff", "csum", "bf", "low", "med").
+		# <2-3> Operation arguments.
 		#
-		filter 1 low 0.1
-		#filter 1 diff
-		#filter 1 bf 3 5
-		#filter 1 med 7
+		yfilter low 0.1
+		#yfilter diff
+		#yfilter csum
+		#yfilter bf 3 5
+		#yfilter med 7
 
 # Define yet another pages.
 #
@@ -161,18 +167,17 @@ page "Electrical Position"
 
 		map 0 2
 
-		# Subtract operation of the data columns.
+		# Subtract operation of the data column (on X and Y).
 		#
-		# <1> Axis number (0 = X, 1 = Y)
-		# <2> Subtract operation ("sub", "add", "mul", "hyp").
-		# <3> Column number of the second operation argument.
+		# <1> Subtract operation ("sub", "add", "mul", "hyp").
+		# <2> Column number of the second argument.
 		#
-		subtract 1 sub 15
-		#subtract 1 mul 10
+		ysubtract sub 15
+		#ysubtract add 10
 
 		# Apply median filter with length 7.
 		#
-		filter 1 med 7
+		yfilter med 7
 
 page "E.Position Error"
 label 1 "(°)"

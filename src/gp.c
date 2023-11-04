@@ -2519,11 +2519,11 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 4:
-				pl->legend_compact = pl->legend_compact ? 0 : 1;
+				pl->legend_hidden = pl->legend_hidden ? 0 : 1;
 
 				if (mu->clicked != 0) {
 
-					mu->mark[1].subs = (pl->legend_compact == 0) ? " " : "X";
+					mu->mark[1].subs = (pl->legend_hidden == 0) ? " " : "X";
 
 					menuResume(mu);
 					gp->stat = GP_MENU;
@@ -3268,7 +3268,7 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 						mu->mark[0].subs = (pl->transparency == 0) ? " " : "X";
 
 						mu->mark[1].N = 4;
-						mu->mark[1].subs = (pl->legend_compact == 0) ? " " : "X";
+						mu->mark[1].subs = (pl->legend_hidden == 0) ? " " : "X";
 
 						gp->stat = GP_MENU;
 						break;
@@ -4271,7 +4271,7 @@ int gp_Draw(gp_t *gp)
 		gpTextLeftCrop(pl, gp->sbuf[1], rd->page[rd->page_N].title,
 				gp->layout_menu_page_margin);
 
-		sprintf(gp->sbuf[0], "%3d. %s", rd->page_N, gp->sbuf[1]);
+		sprintf(gp->sbuf[0], "%3d %s", rd->page_N, gp->sbuf[1]);
 
 		drawText(gp->dw, gp->surface, pl->font, (pl->screen.min_x + pl->screen.max_x) / 2,
 				pl->screen.min_y + gp->layout_page_title_offset, gp->sbuf[0],
@@ -4325,28 +4325,47 @@ gpGetOPT(gp_t *gp, char *argv[])
 {
 	read_t		*rd = gp->rd;
 
-	const char	*opname;
+	char		*subarg;
 	int		argi, op = 1;
 
 	while (argv[op] != NULL) {
 
-		if (		   argv[op][0] == '-'
-				&& argv[op][1] == '-') {
+		if (argv[op][0] == '-') {
 
-			opname = &argv[op][2];
+			if (argv[op][1] == 'h') {
 
-			if (strcmp(opname, "stdin") == 0) {
+				printf(	"Usage: gp [options] file ...\n"
+					"  -i        open stdin text stream\n"
+					"  -k <n>    chunk size in bytes\n"
+					"  -u <n>    waiting timeout in msec\n"
+					"  -l <n>    data length to allocate\n"
+					"  -t <n>    time column default\n"
+					);
+
+				exit(0);
+			}
+			else if (argv[op][1] == 'i') {
 
 				sprintf(gp->sbuf[0],	"load 0 0 stdin\n"
 							"mkpages -2\n");
 
 				readConfigIN(rd, gp->sbuf[0], 0);
 			}
-			else if (strcmp(opname, "chunk") == 0) {
+			else if (argv[op][1] == 'k') {
 
-				op++;
+				subarg = &argv[op][2];
 
-				if (stoi(&rd->mk_config, &argi, argv[op]) != NULL) {
+				if (*subarg == 0) {
+
+					op++;
+
+					if (argv[op] == NULL)
+						break;
+
+					subarg = argv[op];
+				}
+
+				if (stoi(&rd->mk_config, &argi, subarg) != NULL) {
 
 					if (argi > 0) {
 
@@ -4354,11 +4373,21 @@ gpGetOPT(gp_t *gp, char *argv[])
 					}
 				}
 			}
-			else if (strcmp(opname, "timeout") == 0) {
+			else if (argv[op][1] == 'u') {
 
-				op++;
+				subarg = &argv[op][2];
 
-				if (stoi(&rd->mk_config, &argi, argv[op]) != NULL) {
+				if (*subarg == 0) {
+
+					op++;
+
+					if (argv[op] == NULL)
+						break;
+
+					subarg = argv[op];
+				}
+
+				if (stoi(&rd->mk_config, &argi, subarg) != NULL) {
 
 					if (argi >= 0) {
 
@@ -4366,11 +4395,21 @@ gpGetOPT(gp_t *gp, char *argv[])
 					}
 				}
 			}
-			else if (strcmp(opname, "length") == 0) {
+			else if (argv[op][1] == 'l') {
 
-				op++;
+				subarg = &argv[op][2];
 
-				if (stoi(&rd->mk_config, &argi, argv[op]) != NULL) {
+				if (*subarg == 0) {
+
+					op++;
+
+					if (argv[op] == NULL)
+						break;
+
+					subarg = argv[op];
+				}
+
+				if (stoi(&rd->mk_config, &argi, subarg) != NULL) {
 
 					if (argi > 0) {
 
@@ -4378,11 +4417,21 @@ gpGetOPT(gp_t *gp, char *argv[])
 					}
 				}
 			}
-			else if (strcmp(opname, "timecol") == 0) {
+			else if (argv[op][1] == 't') {
 
-				op++;
+				subarg = &argv[op][2];
 
-				if (stoi(&rd->mk_config, &argi, argv[op]) != NULL) {
+				if (*subarg == 0) {
+
+					op++;
+
+					if (argv[op] == NULL)
+						break;
+
+					subarg = argv[op];
+				}
+
+				if (stoi(&rd->mk_config, &argi, subarg) != NULL) {
 
 					if (argi >= -1 && argi < READ_COLUMN_MAX) {
 

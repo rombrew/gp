@@ -6,7 +6,7 @@
 #include "external.gp"
 
 # Font size and the one of the following embedded font names (this should
-# be specified in ~/.gprc file).
+# be specified in user ~/.gprc file).
 #
 # <1> Font point size.
 # <2> Embedded font name or the file path.
@@ -48,23 +48,23 @@ length 1000
 #
 windowsize 800 600
 
-# Select UI language (0 = EN, 1 = RU).
+# Select UI language (0 = "english", 1 = "russian").
 #
 language 0
 
-# Default color scheme (0 = dark, 1 = light, 2 = grayscale).
+# Default color scheme (0 = "dark", 1 = "light", 2 = "grayscale").
 #
 colorscheme 0
 
-# Draw figures with antialiasing (0 = NONE, 1 = 4X_MSAA, 2 = 8X_MSAA).
+# Draw figures with antialiasing (0 = "none", 1 = "4x MSAA", 2 = "8x MSAA").
 #
 antialiasing 1
 
-# Draw UI text with blended font (0 = solid, 1 = blended).
+# Draw UI text with blended font (0 = "solid", 1 = "blended").
 #
 blendfont 1
 
-# Draw UI and grid with specified thickness (0 = thin, 1 = bold, 2 = extra bold).
+# Draw UI (and grid) with specified thickness (0 = "thin", 1 = "bold", 2 = "extra bold").
 #
 thickness 1
 
@@ -88,7 +88,7 @@ shortfilename 1
 #
 fastdraw 200
 
-# Interpolation method of resample operation (0 = nearest, 1 = linear).
+# Interpolation method of resample operation (0 = "nearest", 1 = "linear").
 #
 interpolation 1
 

@@ -6787,9 +6787,6 @@ plotLegendLayout(plot_t *pl)
 		}
 	}
 
-	if (pl->legend_compact != 0)
-		size_MAX = 0;
-
 	pl->legend_size_X = size_MAX + pl->layout_font_long * 2;
 	pl->legend_N = size_N;
 
@@ -6858,74 +6855,56 @@ plotLegendDraw(plot_t *pl, SDL_Surface *surface)
 						legY + size_Y, pl->sch->plot_hovered);
 			}
 
-			fwidth = pl->figure[fN].width;
-			boxY = legY + pl->layout_font_height / 2;
+			if (pl->legend_hidden == 0) {
 
-			if (pl->figure[fN].drawing == FIGURE_DRAWING_LINE) {
+				double		padY;
 
-				boxX = legX + pl->layout_font_height / 2;
+				fwidth = pl->figure[fN].width;
+				boxY = legY + pl->layout_font_height / 2;
 
-				if (fwidth > 1) {
+				padY = (fwidth < 1 || (fwidth % 2) != 0) ? 0.5 : 0.;
 
-					drawLineCanvas(pl->dw, surface, &pl->viewport, boxX, boxY,
-							boxX + pl->layout_font_height, boxY,
-							ncolor, fwidth);
+				if (pl->figure[fN].drawing == FIGURE_DRAWING_LINE) {
+
+					boxX = legX + pl->layout_font_height / 2;
+
+					drawLineCanvas(pl->dw, surface, &pl->viewport, boxX,
+							boxY + padY, boxX + pl->layout_font_height,
+							boxY + padY, ncolor, fwidth);
 				}
-				else {
-					drawLineCanvas(pl->dw, surface, &pl->viewport, boxX, boxY + 0.5,
-							boxX + pl->layout_font_height, boxY + 0.5,
-							ncolor, fwidth);
+				else if (pl->figure[fN].drawing == FIGURE_DRAWING_DASH) {
+
+					boxX = legX + pl->layout_font_height / 2;
+
+					drawDashReset(pl->dw);
+
+					drawDashCanvas(pl->dw, surface, &pl->viewport, boxX,
+							boxY + padY, boxX + pl->layout_font_height,
+							boxY + padY, ncolor, fwidth,
+							pl->layout_drawing_dash, pl->layout_drawing_space);
 				}
-			}
-			else if (pl->figure[fN].drawing == FIGURE_DRAWING_DASH) {
+				else if (pl->figure[fN].drawing == FIGURE_DRAWING_DOT) {
 
-				boxX = legX + pl->layout_font_height / 2;
-
-				drawDashReset(pl->dw);
-
-				if (fwidth > 1) {
-
-					drawDashCanvas(pl->dw, surface, &pl->viewport, boxX, boxY,
-							boxX + pl->layout_font_height, boxY,
-							ncolor, fwidth, pl->layout_drawing_dash,
-							pl->layout_drawing_space);
-				}
-				else {
-					drawDashCanvas(pl->dw, surface, &pl->viewport, boxX, boxY + 0.5,
-							boxX + pl->layout_font_height, boxY + 0.5,
-							ncolor, fwidth, pl->layout_drawing_dash,
-							pl->layout_drawing_space);
-				}
-			}
-			else if (pl->figure[fN].drawing == FIGURE_DRAWING_DOT) {
-
-				boxX = legX + pl->layout_font_height;
-
-				if (fwidth > 4) {
+					boxX = legX + pl->layout_font_height;
 
 					drawDotCanvas(pl->dw, surface, &pl->viewport,
-							boxX + 0.5, boxY + 0.5,
-							fwidth, ncolor, 1);
+							boxX + padY, boxY + padY,
+							(fwidth > 4) ? fwidth : 4, ncolor, 1);
 				}
-				else {
-					drawDotCanvas(pl->dw, surface, &pl->viewport,
-							boxX + 0.5, boxY + 0.5,
-							4, ncolor, 1);
+
+				if (pl->mark_on != 0) {
+
+					boxX = legX + pl->layout_font_height;
+
+					drawMarkCanvas(pl->dw, surface, &pl->viewport, boxX,
+							boxY + padY, pl->layout_mark, fN, ncolor,
+							(fwidth < 1) ? 1 : fwidth);
 				}
-			}
-
-			if (pl->mark_on != 0) {
-
-				boxX = legX + pl->layout_font_height;
-				fwidth = (fwidth < 1) ? 1 : fwidth;
-
-				drawMarkCanvas(pl->dw, surface, &pl->viewport, boxX, boxY,
-						pl->layout_mark, fN, ncolor, fwidth);
 			}
 
 			SDL_UnlockSurface(surface);
 
-			if (pl->legend_compact == 0) {
+			if (pl->legend_hidden == 0) {
 
 				drawText(pl->dw, surface, pl->font, legX + pl->layout_font_height * 2
 						+ pl->layout_font_long, boxY, pl->figure[fN].label,
