@@ -1314,10 +1314,10 @@ gpMakeAboutMenu(gp_t *gp)
 	strcpy(la, gp->sbuf[0]);
 	la += strlen(la) + 1;
 
-	strcpy(la, "[0] https://sourceforge.net/projects/graph-plotter/");
+	strcpy(la, "* https://sourceforge.net/projects/graph-plotter");
 	la += strlen(la) + 1;
 
-	strcpy(la, "[1] https://github.com/rombrew/gp");
+	strcpy(la, "* https://github.com/rombrew/gp");
 	la += strlen(la) + 1;
 
 	*la = 0;
@@ -1464,7 +1464,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				editRaise(ed, 7, gp->la->file_name_edit,
 						gp->sbuf[0], mu->box_X, mu->box_Y);
 
-				ed->list_fmt = ".png\0.svg\0.csv\0\0";
+				ed->list_fmt = ".png\0" ".svg\0" ".csv\0";
 
 				gp->stat = GP_EDIT;
 				break;
@@ -2292,7 +2292,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 					sprintf(gp->sbuf[0], "%d %d %d", config[0], config[1], config[2]);
 				}
 				else {
-					sprintf(gp->sbuf[0], "3 0 0");
+					sprintf(gp->sbuf[0], "15 0 0");
 				}
 
 				editRaise(ed, 18, gp->la->median_unwrap_edit,
@@ -2307,14 +2307,14 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 			case 3:
 				editRaise(ed, 5, gp->la->scale_offset_edit,
-						"1", mu->box_X, mu->box_Y);
+						"1 0", mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
 
 			case 4:
 				editRaise(ed, 6, gp->la->scale_offset_edit,
-						"-1", mu->box_X, mu->box_Y);
+						"-1 0", mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
@@ -2369,7 +2369,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 			case 14:
 				editRaise(ed, 19, gp->la->median_unwrap_edit,
-						"3", mu->box_X, mu->box_Y);
+						"15", mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
@@ -2492,7 +2492,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				gp->fig_N = -1;
 
 				editRaise(ed, 5, gp->la->scale_offset_edit,
-						"1", mu->box_X, mu->box_Y);
+						"1 0", mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
@@ -2501,12 +2501,38 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				gp->fig_N = -1;
 
 				editRaise(ed, 6, gp->la->scale_offset_edit,
-						"-1", mu->box_X, mu->box_Y);
+						"-1 0", mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
 
 			case 3:
+				sprintf(gp->sbuf[0], "%s/g%if%i.csv", rd->screenpath,
+						rd->page_N, gp->pl->legend_N);
+
+				N = 1;
+
+				while (gpFileExist(gp->sbuf[0]) != 0) {
+
+					if (N >= 100) {
+
+						ERROR("Failed to find free file name\n");
+						break;
+					}
+
+					sprintf(gp->sbuf[0], "%s/g%if%i_%i.csv", rd->screenpath,
+							rd->page_N, gp->pl->legend_N, N);
+
+					N++;
+				}
+
+				editRaise(ed, 7, gp->la->file_name_edit,
+						gp->sbuf[0], mu->box_X, mu->box_Y);
+
+				gp->stat = GP_EDIT;
+				break;
+
+			case 4:
 				pl->transparency = pl->transparency ? 0 : 1;
 
 				if (mu->clicked != 0) {
@@ -2518,7 +2544,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				}
 				break;
 
-			case 4:
+			case 5:
 				pl->legend_hidden = pl->legend_hidden ? 0 : 1;
 
 				if (mu->clicked != 0) {
@@ -3264,10 +3290,10 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 						menuRaise(mu, 4, gp->la->legend_menu,
 								gp->cur_X, gp->cur_Y);
 
-						mu->mark[0].N = 3;
+						mu->mark[0].N = 4;
 						mu->mark[0].subs = (pl->transparency == 0) ? " " : "X";
 
-						mu->mark[1].N = 4;
+						mu->mark[1].N = 5;
 						mu->mark[1].subs = (pl->legend_hidden == 0) ? " " : "X";
 
 						gp->stat = GP_MENU;

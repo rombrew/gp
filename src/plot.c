@@ -5046,7 +5046,7 @@ void plotFigureExportCSV(plot_t *pl, const char *file)
 {
 	FILE		*fd_csv;
 	int		list_cN[16], list_fN[16], len_N;
-	int		N, fN, dN, dN_common, aN, job;
+	int		N, fN, fN_common, dN, dN_common, cNX, cNY, aN, job;
 
 	fd_csv = unified_fopen(file, "w");
 
@@ -5057,6 +5057,8 @@ void plotFigureExportCSV(plot_t *pl, const char *file)
 	}
 
 	len_N = 0;
+
+	fN_common = -1;
 	dN_common = -1;
 
 	for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
@@ -5067,10 +5069,38 @@ void plotFigureExportCSV(plot_t *pl, const char *file)
 			dN = pl->figure[fN].data_N;
 			aN = pl->figure[fN].axis_X;
 
-			dN_common = (dN_common < 0) ? dN : dN_common;
+			if (fN_common < 0) {
 
-			if (		aN == pl->on_X
-					&& dN == dN_common) {
+				fN_common = fN;
+				dN_common = dN;
+			}
+
+			if (		dN != dN_common
+					&& aN == pl->figure[fN_common].axis_X) {
+
+				cNX = pl->figure[fN_common].column_X;
+
+				cNY = plotGetSubtractResample(pl, dN_common, cNX,
+						pl->figure[fN].data_N,
+						pl->figure[fN].column_X,
+						pl->figure[fN].column_Y);
+
+				if (cNY < 0) {
+
+					ERROR("Unable to get resample subtract\n");
+				}
+				else {
+					pl->figure[fN].data_N = dN_common;
+					pl->figure[fN].column_X = cNX;
+					pl->figure[fN].column_Y = cNY;
+
+					dN = pl->figure[fN].data_N;
+
+					ERROR("Figure %i was resampled\n", fN);
+				}
+			}
+
+			if (dN == dN_common) {
 
 				job = 1;
 
@@ -5109,6 +5139,9 @@ void plotFigureExportCSV(plot_t *pl, const char *file)
 
 					len_N++;
 				}
+			}
+			else {
+				ERROR("Figure %i from another dataset\n", fN);
 			}
 		}
 	}
@@ -5209,7 +5242,7 @@ static void
 plotMarkLayout(plot_t *pl)
 {
 	const fval_t	*row;
-	double		scale, offset, fval_X, fval_Y, span;
+	double		scale, offset, fval_X, fval_Y, base, span;
 	int		fN, vN, aN, bN, cX, cY, cZ, N, id_N, mN = 0;
 
 	for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
@@ -5230,6 +5263,7 @@ plotMarkLayout(plot_t *pl)
 	pl->mark_N = (pl->mark_N < 1) ? 1 : pl->mark_N;
 	pl->mark_N = (pl->mark_N > PLOT_MARK_MAX) ? PLOT_MARK_MAX : pl->mark_N;
 
+	base = (double) (SDL_GetTicks() % 100) / (pl->mark_N * 100.);
 	span = (double) (pl->mark_N * mN);
 
 	for (fN = 0, vN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
@@ -5253,7 +5287,9 @@ plotMarkLayout(plot_t *pl)
 
 			for (N = 0; N < pl->mark_N; ++N) {
 
-				fval_X = (N * mN + vN) / span;
+				fval_X = base + (double) (N * mN + vN) / span;
+				fval_X = (fval_X > 1.) ? fval_X - 1. : fval_X;
+
 				fval_X = (fval_X - offset) / scale;
 
 				row = plotDataSliceGet(pl, pl->figure[fN].data_N,
