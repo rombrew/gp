@@ -62,6 +62,8 @@ void langFill(lang_t *la, int lang)
 			"    Solid font            [ %s ]\0"
 			"    Grid thickness        [ %s ]\0"
 			"    Font size             [ %s ]\0"
+			"    Marker density        [ %s ]\0"
+			"    Marker size           [ %s ]\0"
 
 			"\0";
 
@@ -72,6 +74,7 @@ void langFill(lang_t *la, int lang)
 			"O   Open data file ...\0"
 			"    Dataset customization ...\0"
 			"    Edit configuration ...\0"
+			"    Write configuration\0"
 			"    Default configuration\0"
 
 			"\0";
@@ -237,6 +240,8 @@ void langFill(lang_t *la, int lang)
 			"    Сплошной шрифт          [ %s ]\0"
 			"    Толщина сетки           [ %s ]\0"
 			"    Размер шрифта           [ %s ]\0"
+			"    Плотность маркеров      [ %s ]\0"
+			"    Размер маркеров         [ %s ]\0"
 
 			"\0";
 
@@ -247,6 +252,7 @@ void langFill(lang_t *la, int lang)
 			"O   Открыть файл данных ...\0"
 			"    Настройка наборов данных ...\0"
 			"    Редактировать конфигурацию ...\0"
+			"    Записать конфигурацию\0"
 			"    Сбросить конфигурацию\0"
 
 			"\0";

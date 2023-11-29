@@ -278,6 +278,8 @@ gpDefaultFile(gp_t *gp)
 				"thickness 1\n"
 				"gamma 50\n"
 				"drawing line 2\n"
+				"marker 40\n"
+				"density 50\n"
 				"timecol -1\n"
 				"shortfilename 1\n"
 				"fastdraw 200\n"
@@ -288,6 +290,66 @@ gpDefaultFile(gp_t *gp)
 
 #ifdef _WINDOWS
 		fprintf(fd,	"legacy_label 1\n");
+#endif /* _WINDOWS */
+
+		fclose(fd);
+	}
+}
+
+static void
+gpWriteFile(gp_t *gp)
+{
+	draw_t		*dw = gp->dw;
+	plot_t		*pl = gp->pl;
+	read_t		*rd = gp->rd;
+
+	const char	*ttfname, *drawing;
+	FILE		*fd;
+
+	fd = unified_fopen(gp->rcfile, "w");
+
+	if (fd == NULL) {
+
+		ERROR("fopen(\"%s\"): %s\n", gp->rcfile, strerror(errno));
+	}
+	else {
+		fprintf(fd, "gpconfig %i\n", GP_CONFIG_VERSION);
+
+		ttfname = (pl->layout_font_ttf == TTF_ID_ROBOTO_MONO_NORMAL) ? "normal"
+			: (pl->layout_font_ttf == TTF_ID_ROBOTO_MONO_THIN) ? "thin" : rd->ttfname;
+
+		fprintf(fd, "font %i \"%s\"\n", pl->layout_font_pt, ttfname);
+		fprintf(fd, "preload %i\n", rd->preload);
+		fprintf(fd, "chunk %i\n", rd->chunk);
+		fprintf(fd, "timeout %i\n", rd->timeout);
+
+		SDL_GetWindowSize(gp->window, &rd->window_size_x, &rd->window_size_y);
+
+		fprintf(fd, "windowsize %i %i\n", rd->window_size_x, rd->window_size_y);
+		fprintf(fd, "language %i\n", rd->language);
+		fprintf(fd, "colorscheme %i\n", rd->colorscheme);
+		fprintf(fd, "antialiasing %i\n", dw->antialiasing);
+		fprintf(fd, "blendfont %i\n", dw->blendfont);
+		fprintf(fd, "thickness %i\n", dw->thickness);
+		fprintf(fd, "gamma %i\n", dw->gamma);
+
+		drawing = (pl->default_drawing == FIGURE_DRAWING_LINE) ? "line"
+			: (pl->default_drawing == FIGURE_DRAWING_DASH) ? "dash"
+			: (pl->default_drawing == FIGURE_DRAWING_DOT) ? "dot" : "unknown";
+
+		fprintf(fd, "drawing %s %i\n", drawing, pl->default_width);
+		fprintf(fd, "marker %i\n", pl->mark_size);
+		fprintf(fd, "density %i\n", pl->mark_density);
+		fprintf(fd, "timecol %i\n", rd->timecol);
+		fprintf(fd, "shortfilename %i\n", rd->shortfilename);
+		fprintf(fd, "fastdraw %i\n", rd->fastdraw);
+		fprintf(fd, "interpolation %i\n", pl->interpolation);
+		fprintf(fd, "defungap %i\n", pl->defungap);
+		fprintf(fd, "precision %i\n", pl->fprecision);
+		fprintf(fd, "lz4_compress %i\n", pl->lz4_compress);
+
+#ifdef _WINDOWS
+		fprintf(fd, "legacy_label %i\n", rd->legacy_label);
 #endif /* _WINDOWS */
 
 		fclose(fd);
@@ -443,8 +505,8 @@ gpFontToggle(gp_t *gp, int toggle, int font_pt)
 
 	style = TTF_STYLE_NORMAL;
 
-	style |= (gp->shift_on == 1) ? TTF_STYLE_BOLD : 0;
-	style |= (gp->ctrl_on == 1) ? TTF_STYLE_ITALIC : 0;
+	style |= (gp->ctrl_on == 1) ? TTF_STYLE_BOLD : 0;
+	style |= (gp->shift_on == 1) ? TTF_STYLE_ITALIC : 0;
 
 	plotFontDefault(pl, pl->layout_font_ttf, font_pt, style);
 
@@ -1175,9 +1237,8 @@ gpMakeDatasetMenu(gp_t *gp)
 static void
 gpMakeConfigurationMenu(gp_t *gp)
 {
-	char		sbuf[READ_FILE_PATH_MAX], *eol;
 	read_t		*rd = gp->rd;
-	char		*la = gp->la_menu;
+	char		*eol, *la = gp->la_menu;
 	FILE		*fd;
 	int		line_N;
 
@@ -1202,22 +1263,23 @@ gpMakeConfigurationMenu(gp_t *gp)
 
 		line_N = 0;
 
-		while (fgets(sbuf, sizeof(sbuf), fd) != NULL) {
+		while (fgets(gp->sbuf[0], sizeof(gp->sbuf[0]), fd) != NULL) {
 
-			eol = sbuf + strlen(sbuf) - 1;
+			eol = gp->sbuf[0] + strlen(gp->sbuf[0]) - 1;
 
-			while (eol != sbuf && strchr(rd->mk_config.lend, *eol) != 0) {
+			while (		eol != gp->sbuf[0]
+					&& strchr(rd->mk_config.lend, *eol) != 0) {
 
 				*eol = 0;
 				--eol;
 			}
 
-			if (strlen(sbuf) != 0) {
+			if (strlen(gp->sbuf[0]) != 0) {
 
-				strcpy(gp->d_names[line_N], sbuf);
-				sprintf(gp->sbuf[0], " %s", sbuf);
+				strcpy(gp->d_names[line_N], gp->sbuf[0]);
+				sprintf(gp->sbuf[1], " %s", gp->sbuf[0]);
 
-				strcpy(la, gp->sbuf[0]);
+				strcpy(la, gp->sbuf[1]);
 				la += strlen(la) + 1;
 
 				line_N++;
@@ -1245,7 +1307,7 @@ gpMakeConfigurationMenu(gp_t *gp)
 }
 
 static void
-gpWriteConfiguration(gp_t *gp)
+gpWriteNewConfiguration(gp_t *gp)
 {
 	FILE		*fd;
 	int		line_N;
@@ -1488,9 +1550,11 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				mu->mark[0].N = 0;
 				mu->mark[0].subs = (rd->colorscheme == 0) ? "Dark   "
 						:  (rd->colorscheme == 1) ? "Light  " : "Graysca";
+
 				mu->mark[1].N = 1;
 				mu->mark[1].subs = (pl->layout_font_ttf == TTF_ID_ROBOTO_MONO_NORMAL) ? "Normal "
 						:  (pl->layout_font_ttf == TTF_ID_ROBOTO_MONO_THIN) ? "Thin   " : "       ";
+
 				mu->mark[2].N = 2;
 				mu->mark[2].subs = (dw->antialiasing == DRAW_4X_MSAA)  ? "4x MSAA"
 						:  (dw->antialiasing == DRAW_8X_MSAA)  ? "8x MSAA" : "Solid  ";
@@ -1507,6 +1571,16 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 				mu->mark[5].N = 5;
 				mu->mark[5].subs = gp->sbuf[2];
+
+				sprintf(gp->sbuf[2] + 20, "%2i     ", pl->mark_density);
+
+				mu->mark[6].N = 6;
+				mu->mark[6].subs = gp->sbuf[2] + 20;
+
+				sprintf(gp->sbuf[2] + 40, "%2i     ", pl->mark_size);
+
+				mu->mark[7].N = 7;
+				mu->mark[7].subs = gp->sbuf[2] + 40;
 
 				gp->stat = GP_MENU;
 				break;
@@ -1696,6 +1770,11 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 5:
+				menuRaise(mu, 1025, gp->la->cancel_menu, mu->box_X, mu->box_Y);
+				gp->stat = GP_MENU;
+				break;
+
+			case 6:
 				menuRaise(mu, 1024, gp->la->cancel_menu, mu->box_X, mu->box_Y);
 				gp->stat = GP_MENU;
 				break;
@@ -1776,7 +1855,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 						if (pl->group[gN].op_time_median == 0) {
 
-							plotGroupMedian(pl, gN, 3, 0, 0);
+							plotGroupMedian(pl, gN, 15, 0, 0);
 						}
 
 						sprintf(gp->sbuf[0], "%i", pl->group[gN].length);
@@ -1975,6 +2054,13 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 			gpDefaultFile(gp);
 		}
 	}
+	else if (menu_N == 1025) {
+
+		if (item_N == 1) {
+
+			gpWriteFile(gp);
+		}
+	}
 	else if (menu_N == 103) {
 
 		switch (item_N) {
@@ -2008,6 +2094,24 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				sprintf(gp->sbuf[0], "%i", pl->layout_font_pt);
 
 				editRaise(ed, 15, gp->la->font_size_edit,
+						gp->sbuf[0], mu->box_X, mu->box_Y);
+
+				gp->stat = GP_EDIT;
+				break;
+
+			case 6:
+				sprintf(gp->sbuf[0], "%i", pl->mark_density);
+
+				editRaise(ed, 20, gp->la->figure_thickness_edit,
+						gp->sbuf[0], mu->box_X, mu->box_Y);
+
+				gp->stat = GP_EDIT;
+				break;
+
+			case 7:
+				sprintf(gp->sbuf[0], "%i", pl->mark_size);
+
+				editRaise(ed, 21, gp->la->figure_thickness_edit,
 						gp->sbuf[0], mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
@@ -2768,7 +2872,7 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 		strcpy(gp->d_names[gp->line_N], text);
 
-		gpWriteConfiguration(gp);
+		gpWriteNewConfiguration(gp);
 		gpMakeConfigurationMenu(gp);
 
 		menuRaise(mu, 1023, gp->la_menu, mu->box_X, mu->box_Y);
@@ -2932,6 +3036,50 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 				plotFigureSubtractFilter(pl, gp->fig_N,
 						SUBTRACT_FILTER_MEDIAN, (double) len);
 			}
+		}
+	}
+	else if (edit_N == 20) {
+
+		n = sscanf(text, "%d", &len);
+
+		if (n == 1) {
+
+			if (len > 0 && len < 100) {
+
+				pl->mark_density = len;
+				pl->mark_count = 0;
+			}
+
+			sprintf(gp->sbuf[2] + 20, "%2i     ", pl->mark_density);
+
+			mu->mark[6].subs = gp->sbuf[2] + 20;
+
+			menuResume(mu);
+			menuLayout(mu);
+
+			gp->stat = GP_MENU;
+		}
+	}
+	else if (edit_N == 21) {
+
+		n = sscanf(text, "%d", &len);
+
+		if (n == 1) {
+
+			if (len > 0 && len < 100) {
+
+				pl->mark_size = len;
+				pl->mark_count = 0;
+			}
+
+			sprintf(gp->sbuf[2] + 40, "%2i     ", pl->mark_size);
+
+			mu->mark[7].subs = gp->sbuf[2] + 40;
+
+			menuResume(mu);
+			menuLayout(mu);
+
+			gp->stat = GP_MENU;
 		}
 	}
 }

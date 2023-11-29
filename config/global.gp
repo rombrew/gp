@@ -79,6 +79,18 @@ gamma 50
 #
 drawing line 2
 
+# Define the marker size relative to font height from 1 to 99.
+#
+marker 40
+
+# Define the marker density as percentage from 1 to 99.
+#
+density 50
+
+# Column number to use as X (when file is opened from UI).
+#
+timecol -1
+
 # Define how to print filenames in UI (0 = full length, <n> = cut to \n dirs in path).
 #
 shortfilename 1
