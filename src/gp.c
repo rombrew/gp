@@ -279,7 +279,7 @@ gpDefaultFile(gp_t *gp)
 				"gamma 50\n"
 				"drawing line 2\n"
 				"marker 40\n"
-				"density 50\n"
+				"density 40\n"
 				"timecol -1\n"
 				"shortfilename 1\n"
 				"fastdraw 200\n"
@@ -1572,15 +1572,15 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				mu->mark[5].N = 5;
 				mu->mark[5].subs = gp->sbuf[2];
 
-				sprintf(gp->sbuf[2] + 20, "%2i     ", pl->mark_density);
+				sprintf(gp->sbuf[2] + 40, "%2i E-2 ", dw->gamma);
 
 				mu->mark[6].N = 6;
-				mu->mark[6].subs = gp->sbuf[2] + 20;
+				mu->mark[6].subs = gp->sbuf[2] + 40;
 
-				sprintf(gp->sbuf[2] + 40, "%2i     ", pl->mark_size);
+				sprintf(gp->sbuf[2] + 20, "%2i %2i  ", pl->mark_density, pl->mark_size);
 
 				mu->mark[7].N = 7;
-				mu->mark[7].subs = gp->sbuf[2] + 40;
+				mu->mark[7].subs = gp->sbuf[2] + 20;
 
 				gp->stat = GP_MENU;
 				break;
@@ -2100,18 +2100,18 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 6:
-				sprintf(gp->sbuf[0], "%i", pl->mark_density);
+				sprintf(gp->sbuf[0], "%i", dw->gamma);
 
-				editRaise(ed, 20, gp->la->figure_thickness_edit,
+				editRaise(ed, 21, gp->la->gamma_edit,
 						gp->sbuf[0], mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
 
 			case 7:
-				sprintf(gp->sbuf[0], "%i", pl->mark_size);
+				sprintf(gp->sbuf[0], "%i %i", pl->mark_density, pl->mark_size);
 
-				editRaise(ed, 21, gp->la->figure_thickness_edit,
+				editRaise(ed, 20, gp->la->marker_density_edit,
 						gp->sbuf[0], mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
@@ -2731,6 +2731,7 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 {
 	scheme_t	*sch = gp->sch;
 	lang_t		*la = gp->la;
+	draw_t		*dw = gp->dw;
 	plot_t		*pl = gp->pl;
 	read_t		*rd = gp->rd;
 	menu_t		*mu = gp->mu;
@@ -3040,47 +3041,56 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 	}
 	else if (edit_N == 20) {
 
-		n = sscanf(text, "%d", &len);
+		int		args[2];
 
-		if (n == 1) {
+		n = sscanf(text, "%d %d", &args[0], &args[1]);
 
-			if (len > 0 && len < 100) {
+		if (n == 2) {
 
-				pl->mark_density = len;
+			if (args[0] > 0 && args[0] < 100) {
+
+				pl->mark_density = args[0];
 				pl->mark_count = 0;
 			}
 
-			sprintf(gp->sbuf[2] + 20, "%2i     ", pl->mark_density);
+			if (args[1] > 0 && args[1] < 100) {
 
-			mu->mark[6].subs = gp->sbuf[2] + 20;
+				pl->mark_size = args[1];
+				pl->mark_count = 0;
+			}
 
-			menuResume(mu);
-			menuLayout(mu);
+			sprintf(gp->sbuf[2] + 20, "%2i %2i  ", pl->mark_density, pl->mark_size);
 
-			gp->stat = GP_MENU;
+			mu->mark[7].subs = gp->sbuf[2] + 20;
 		}
+
+		menuResume(mu);
+		menuLayout(mu);
+
+		gp->stat = GP_MENU;
 	}
 	else if (edit_N == 21) {
 
 		n = sscanf(text, "%d", &len);
 
-		if (n == 1) {
+		if (n != 0) {
 
-			if (len > 0 && len < 100) {
+			if (len > 0 && len < 1000) {
 
-				pl->mark_size = len;
-				pl->mark_count = 0;
+				dw->gamma = len;
+
+				drawGamma(gp->dw);
 			}
 
-			sprintf(gp->sbuf[2] + 40, "%2i     ", pl->mark_size);
+			sprintf(gp->sbuf[2] + 40, "%2i E-2 ", dw->gamma);
 
-			mu->mark[7].subs = gp->sbuf[2] + 40;
-
-			menuResume(mu);
-			menuLayout(mu);
-
-			gp->stat = GP_MENU;
+			mu->mark[6].subs = gp->sbuf[2] + 40;
 		}
+
+		menuResume(mu);
+		menuLayout(mu);
+
+		gp->stat = GP_MENU;
 	}
 }
 

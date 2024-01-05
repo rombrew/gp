@@ -96,7 +96,7 @@ plot_t *plotAlloc(draw_t *dw, scheme_t *sch)
 	pl->defungap = 10;
 
 	pl->mark_size = 40;
-	pl->mark_density = 50;
+	pl->mark_density = 40;
 
 	pl->default_drawing = FIGURE_DRAWING_LINE;
 	pl->default_width = 2;
