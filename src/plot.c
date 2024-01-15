@@ -7041,8 +7041,8 @@ plotLegendDraw(plot_t *pl, SDL_Surface *surface)
 
 int plotLegendGetByClick(plot_t *pl, int cur_X, int cur_Y)
 {
-	int		fN, rN = -1;
 	int		legX, legY, relX, relY;
+	int		fN, rN = -1;
 
 	legX = pl->legend_X;
 	legY = pl->legend_Y;
@@ -7054,7 +7054,7 @@ int plotLegendGetByClick(plot_t *pl, int cur_X, int cur_Y)
 			relX = cur_X - (legX + pl->layout_font_height * 2);
 			relY = cur_Y - legY;
 
-			if (relX > 0 && relX < pl->legend_size_X
+			if (		relX > 0 && relX < pl->legend_size_X
 					&& relY > 0 && relY < pl->layout_font_height) {
 
 				rN = fN;
@@ -7072,14 +7072,18 @@ int plotLegendGetByClick(plot_t *pl, int cur_X, int cur_Y)
 
 int plotLegendBoxGetByClick(plot_t *pl, int cur_X, int cur_Y)
 {
-	int		rN = -1;
+	int		relX, relY, lenY, rN = -1;
 
-	cur_X = cur_X - pl->legend_X;
-	cur_Y = cur_Y - pl->legend_Y;
+	relX = cur_X - pl->legend_X;
+	relY = cur_Y - pl->legend_Y;
 
-	if (cur_X > 0 && cur_X < pl->layout_font_height * 2
-			&& cur_Y > 0 && cur_Y < pl->layout_font_height * pl->legend_N)
+	lenY = pl->layout_font_height * pl->legend_N;
+
+	if (		relX > 0 && relX < pl->layout_font_height * 2
+			&& relY > 0 && relY < lenY) {
+
 		rN = 0;
+	}
 
 	pl->hover_legend = rN;
 
@@ -7200,14 +7204,21 @@ plotDataBoxDraw(plot_t *pl, SDL_Surface *surface)
 
 int plotDataBoxGetByClick(plot_t *pl, int cur_X, int cur_Y)
 {
-	int		rN = -1;
+	int		relX, relY, lenY, rN = -1;
 
-	cur_X = cur_X - pl->data_box_X;
-	cur_Y = cur_Y - pl->data_box_Y;
+	if (pl->data_box_on != DATA_BOX_FREE) {
 
-	if (cur_X > 0 && cur_X < pl->data_box_size_X
-			&& cur_Y > 0 && cur_Y < pl->layout_font_height * pl->data_box_N)
-		rN = 0;
+		relX = cur_X - pl->data_box_X;
+		relY = cur_Y - pl->data_box_Y;
+
+		lenY = pl->layout_font_height * pl->data_box_N;
+
+		if (		relX > 0 && relX < pl->data_box_size_X
+				&& relY > 0 && relY < lenY) {
+
+			rN = 0;
+		}
+	}
 
 	pl->hover_data_box = rN;
 
