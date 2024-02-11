@@ -4,7 +4,7 @@ BUILD	?= /tmp/gp/$(ARCH)
 TARGET	= $(BUILD)/gp.exe
 
 CROSS	= $(ARCH)-w64-mingw32
-SDLDIR	= ../mingw/$(ARCH)-w64-mingw32
+MINGW	= ../mingw/$(ARCH)-w64-mingw32
 
 CC	= $(CROSS)-gcc
 LD	= $(CROSS)-gcc
@@ -23,11 +23,11 @@ CFLAGS  += -ffinite-math-only \
 	   -ffp-contract=fast
 
 CFLAGS  += -fno-stack-protector
-CFLAGS  += -I$(SDLDIR)/include -I$(SDLDIR)/include/SDL2
+CFLAGS  += -I$(MINGW)/include
 CFLAGS  += -D_WINDOWS -D_LEGACY
 
 LFLAGS	= -lm -lSDL2 -lSDL2_ttf -lSDL2_image -static
-LFLAGS	+= -L$(SDLDIR)/lib
+LFLAGS	+= -L$(MINGW)/lib
 
 LFLAGS  += -Wl,--gc-sections -Wl,--no-undefined -lusp10 -ldinput8 -ldxguid \
 	   -ldxerr8 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 \

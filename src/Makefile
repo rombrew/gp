@@ -20,7 +20,7 @@ CFLAGS  += -ffinite-math-only \
 	   -ffp-contract=fast
 
 CFLAGS  += -fno-stack-protector
-CFLAGS  += -I/usr/include/SDL2 -D_REENTRANT
+CFLAGS  += -I/usr/include -D_REENTRANT
 
 LFLAGS	= -lm -lSDL2 -lSDL2_ttf -lSDL2_image
 

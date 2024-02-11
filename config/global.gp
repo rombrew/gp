@@ -64,7 +64,7 @@ antialiasing 1
 #
 blendfont 1
 
-# Draw UI (and grid) with specified thickness (0 = "thin", 1 = "bold", 2 = "extra bold").
+# Draw UI and grid lines with specified thickness (0 = "thin", 1 = "bold", 2 = "triple").
 #
 thickness 1
 
@@ -79,15 +79,23 @@ gamma 50
 #
 drawing line 2
 
-# Define the marker size relative to font height from 1 to 99.
+# Define the marker size relative to font height (from 1 to 99).
 #
 marker 40
 
-# Define the marker density as percentage from 1 to 99.
+# Define the marker density as percentage (from 1 to 99).
 #
 density 50
 
-# Column number to use as X (when file is opened from UI).
+# Draw plot legend with transparency (0 = "solid", 1 = "transparent").
+#
+transparency 1
+
+# Define the number of significant digits in numerical printouts.
+#
+precision 9
+
+# Column number to map on X axis when the file is opened from UI.
 #
 timecol -1
 
@@ -107,10 +115,6 @@ interpolation 1
 # Define the time gap threshold to use with unwrap feature.
 #
 defungap 10
-
-# Define the number of significant digits in numerical printouts.
-#
-precision 9
 
 # Use in RAM dataset compression by LZ4 algorithm.
 #
