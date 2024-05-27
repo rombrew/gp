@@ -1,6 +1,6 @@
 /*
    Graph Plotter is a tool to analyse numerical data.
-   Copyright (C) 2023 Roman Belov <romblv@gmail.com>
+   Copyright (C) 2024 Roman Belov <romblv@gmail.com>
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -1758,6 +1758,8 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 3:
+				gp->data_N = plotFigureAnyData(pl);
+
 				gpMakeDatasetMenu(gp);
 
 				menuRaise(mu, 1022, gp->la_menu, mu->box_X, mu->box_Y);
@@ -2417,7 +2419,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 					sprintf(gp->sbuf[0], "%d %d %d", config[0], config[1], config[2]);
 				}
 				else {
-					sprintf(gp->sbuf[0], "15 0 0");
+					sprintf(gp->sbuf[0], "15 0 1");
 				}
 
 				editRaise(ed, 18, gp->la->median_unwrap_edit,
