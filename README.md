@@ -37,23 +37,25 @@ To compile GP you could use Makefile from source directory.
 
 You can just use GP with a plain text files or CSV tables.
 
-	$ gp file1.txt file2.txt ...
+	$ gp file1.txt file2.csv ...
 
 Note that first valid line of plain text (or CSV) file will be interpreted as
 description of the columns. Here is a simple example of the plain text file.
 
 	$ cat file1.txt
-	time@s  var1@a  var2@v  hexpar@
-	 0.1     0.0     0.0     0x01
-	 0.2     1.1     2.1     0x13
-	 0.3     1.5     3.4     0x1f
-	 0.4     1.7     4.1     0x1f
-	 ...
+	time@sec  var1@A  var2@V  hexpar@  ...
+	0.1       0.0     0.0     0x0001
+	0.2       1.1     2.1     0x0035
+	0.3       1.5     3.4     0x0d1f
+	0.4       1.7     4.1     0x0e00
+	...
 
 You also can open a multiple files from UI to combine various columns from
-different files in a single plot.
+different files in a single plot. Also check for command line options help.
 
-## Regular files configuration
+	$ gp -h
+
+## Regular configuration
 
 Take a look into configuration examples that describes most of the options.
 
@@ -63,7 +65,7 @@ Take a look into configuration examples that describes most of the options.
 
 ## Live configuration
 
-You can make real-time plot from raw serial device or from growing logfiles.
+You can make real-time plot from raw serial device or from growing logfile.
 
 * [serial.gp](config/serial.gp)
 

@@ -64,9 +64,9 @@ antialiasing 1
 #
 blendfont 1
 
-# Draw UI and grid lines with specified thickness (0 = "thin", 1 = "bold", 2 = "triple").
+# Draw UI and grid lines with specified thickness (1 = "thin", 2 = "bold", 3 = "triple").
 #
-thickness 1
+thickness 2
 
 # Gamma correction drawing in case of antialiasing (in percent).
 #
