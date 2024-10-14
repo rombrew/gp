@@ -150,7 +150,7 @@ plotFontLayout(plot_t *pl)
 	pl->layout_font_height = TTF_FontHeight(pl->font);
 
 	pl->layout_font_space = pl->layout_font_long * 14 / 10;
-	pl->layout_axis_box = pl->layout_tick_tooth + pl->layout_font_height;
+	pl->layout_ruler_box = pl->layout_tick_tooth + pl->layout_font_height;
 	pl->layout_label_box = pl->layout_font_height;
 
 	pl->layout_mark_size = pl->layout_font_height * pl->mark_size / 200;
@@ -3203,7 +3203,7 @@ int plotAxisGetByClick(plot_t *pl, int cur_X, int cur_Y)
 
 		if (pl->axis[aN].busy == AXIS_BUSY_X) {
 
-			len = pl->layout_axis_box;
+			len = pl->layout_ruler_box;
 			len += (pl->axis[aN].compact == 0) ? pl->layout_label_box : 0;
 
 			if (		cur_Y < pl->axis[aN].layout_pos + len
@@ -3216,7 +3216,7 @@ int plotAxisGetByClick(plot_t *pl, int cur_X, int cur_Y)
 
 		if (pl->axis[aN].busy == AXIS_BUSY_Y) {
 
-			len = pl->layout_axis_box;
+			len = pl->layout_ruler_box;
 			len += (pl->axis[aN].compact == 0) ? pl->layout_label_box : 0;
 
 			if (		cur_X < pl->axis[aN].layout_pos + len
@@ -6633,7 +6633,7 @@ plotDrawAxis(plot_t *pl, SDL_Surface *surface, int aN)
 
 		if (hovered != 0) {
 
-			tdec = pl->layout_axis_box;
+			tdec = pl->layout_ruler_box;
 			tdec += (pl->axis[aN].compact == 0) ? pl->layout_label_box : 0;
 
 			drawFillRect(surface, pl->viewport.min_x, lpos, pl->viewport.max_x,
@@ -6693,7 +6693,7 @@ plotDrawAxis(plot_t *pl, SDL_Surface *surface, int aN)
 
 		if (hovered != 0) {
 
-			tdec = pl->layout_axis_box;
+			tdec = pl->layout_ruler_box;
 			tdec += (pl->axis[aN].compact == 0) ? pl->layout_label_box : 0;
 
 			drawFillRect(surface, lpos - tdec, pl->viewport.min_y, lpos,
@@ -6764,7 +6764,7 @@ plotDrawAxis(plot_t *pl, SDL_Surface *surface, int aN)
 				sprintf(numbuf, "E%+i", - tdec);
 
 				tpos = (pl->axis[aN].compact == 0) ?
-					lpos + pl->layout_axis_box :
+					lpos + pl->layout_ruler_box :
 					lpos + pl->layout_tick_tooth;
 
 				tpos += pl->layout_font_height / 2;
@@ -6837,7 +6837,7 @@ plotDrawAxis(plot_t *pl, SDL_Surface *surface, int aN)
 		}
 		else {
 			tpos = (pl->viewport.min_x + pl->viewport.max_x) / 2;
-			lpos = lpos + pl->layout_axis_box + pl->layout_font_height / 2;
+			lpos = lpos + pl->layout_ruler_box + pl->layout_font_height / 2;
 
 			if (pl->axis[aN].label[0] != 0) {
 
@@ -6868,7 +6868,7 @@ plotDrawAxis(plot_t *pl, SDL_Surface *surface, int aN)
 				sprintf(numbuf, "E%+i", - tdec);
 
 				tpos = (pl->axis[aN].compact == 0) ?
-					lpos - pl->layout_axis_box :
+					lpos - pl->layout_ruler_box :
 					lpos - pl->layout_tick_tooth;
 
 				tpos -= pl->layout_font_height / 2;
@@ -6942,7 +6942,7 @@ plotDrawAxis(plot_t *pl, SDL_Surface *surface, int aN)
 			}
 		}
 		else {
-			lpos = lpos - pl->layout_axis_box - pl->layout_font_height / 2;
+			lpos = lpos - pl->layout_ruler_box - pl->layout_font_height / 2;
 			tpos = (pl->viewport.min_y + pl->viewport.max_y) / 2;
 
 			if (pl->axis[aN].label[0] != 0) {
@@ -7329,7 +7329,7 @@ void plotLayout(plot_t *pl)
 
 			pl->axis[aN].layout_pos = posX;
 
-			posX += pl->layout_axis_box;
+			posX += pl->layout_ruler_box + pl->dw->thickness;
 			posX += (pl->axis[aN].compact == 0) ? pl->layout_label_box : 0;
 		}
 
@@ -7340,7 +7340,7 @@ void plotLayout(plot_t *pl)
 
 			pl->axis[aN].layout_pos = posY;
 
-			posY += pl->layout_axis_box;
+			posY += pl->layout_ruler_box + pl->dw->thickness;
 			posY += (pl->axis[aN].compact == 0) ? pl->layout_label_box : 0;
 		}
 	}

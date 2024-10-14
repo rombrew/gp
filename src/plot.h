@@ -426,7 +426,7 @@ typedef struct {
 	int			layout_font_long;
 	int			layout_font_space;
 	int			layout_border;
-	int			layout_axis_box;
+	int			layout_ruler_box;
 	int			layout_label_box;
 	int			layout_tick_tooth;
 	int			layout_grid_dash;
