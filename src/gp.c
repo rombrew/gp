@@ -627,7 +627,8 @@ legacy_FileOpenBAT(gp_t *gp, const char *file, int fromUI)
 
 			s = strtok(s, " \t");
 
-			if (s != NULL && (strcmp(s, "grm") == 0 || strcmp(s, "GRM") == 0)) {
+			if (s != NULL && (	   strstr(s, "grm") != NULL
+						|| strstr(s, "GRM") != NULL)) {
 
 				if ((argv[0] = strtok(NULL, " \t")) != NULL) {
 
@@ -2713,7 +2714,8 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 			for (N = 0; N < PLOT_FIGURE_MAX; ++N) {
 
-				if (pl->figure[N].busy != 0) {
+				if (		pl->figure[N].busy != 0
+						&& pl->figure[N].hidden == 0) {
 
 					int		lN;
 

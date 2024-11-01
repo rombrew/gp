@@ -155,7 +155,7 @@ const char *utf8_skip(const char *s, int n)
 	return s;
 }
 
-const char *utf8_skip_b(const char *s, int n)
+const char *utf8_skip_byte(const char *s, int n)
 {
 	char		*r;
 

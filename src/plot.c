@@ -145,8 +145,9 @@ void plotClean(plot_t *pl)
 static void
 plotFontLayout(plot_t *pl)
 {
-	TTF_SizeUTF8(pl->font, "M", &pl->layout_font_long, &pl->layout_font_height);
+	TTF_SizeUTF8(pl->font, "Ab", &pl->layout_font_long, &pl->layout_font_height);
 
+	pl->layout_font_long /= 2;
 	pl->layout_font_height = TTF_FontHeight(pl->font);
 
 	pl->layout_font_space = pl->layout_font_long * 14 / 10;

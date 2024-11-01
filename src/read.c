@@ -240,7 +240,7 @@ readCutLabel(char *tbuf, const char *text, int allowed)
 
 	if (length > (allowed - 1)) {
 
-		text = utf8_skip_b(text, length - (allowed - 2));
+		text = utf8_skip_byte(text, length - (allowed - 2));
 
 		strcpy(tbuf, "~");
 		strcat(tbuf, text);
