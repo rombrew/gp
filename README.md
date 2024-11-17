@@ -55,6 +55,10 @@ files in a single plot. Also check for command line options help.
 
 	$ gp -h
 
+Example of pipeline usage with GP.
+
+	$ zcat config/tlmgrab.csv.gz | gp -t0 -0
+
 ## Сonfiguration
 
 Take a look into configuration examples that describes most of the options.

@@ -9,7 +9,7 @@
 #
 #space "*="
 
-# Column number to use as X (when file is opened from UI).
+# Default column number to map on X axis when use mkpages.
 #
 timecol -1
 
@@ -23,11 +23,11 @@ group 0 -1
 defscale 0 0.05 0.0
 deflabel 0 "Time (s)"
 
-# Make pages for each column from current dataset. Value -2 means to use global
-# settings (timecol) when file is opened from UI.
+# Make pages for each column from current dataset. Argument -2 means to use the
+# global settings from timecol.
 #
 # <1> Column number to use on X axis.
 #
-mkpages -1
+mkpages -2
 #mkpages 0
 

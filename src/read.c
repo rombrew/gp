@@ -217,7 +217,7 @@ read_t *readAlloc(draw_t *dw, plot_t *pl)
 	rd->preload = 8388608;
 	rd->chunk = 4096;
 	rd->timeout = 5000;
-	rd->length_N = 1000;
+	rd->length_N = 0;
 
 	rd->bind_N = -1;
 	rd->page_N = -1;
@@ -1065,7 +1065,7 @@ readTEXTGetCN(read_t *rd, int dN, FILE *fd, fval_t *rbuf, int *rbuf_N)
 
 					fixed_N++;
 
-					if (fixed_N >= 3) {
+					if (fixed_N >= READ_TEXT_HEAD_MAX) {
 
 						rd->data[dN].line_N = total_N + 1;
 						break;
@@ -1105,7 +1105,8 @@ readClose(read_t *rd, int dN)
 
 void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int fmt)
 {
-	fval_t		rbuf[READ_COLUMN_MAX * 3];
+	fval_t		rbuf[READ_COLUMN_MAX * READ_TEXT_HEAD_MAX];
+
 	int		N, rbuf_N, bom;
 
 	FILE			*fd;
@@ -1134,7 +1135,7 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 			file_stat(file, &bF);
 		}
 
-		rd->data[dN].length_N = lN;
+		rd->data[dN].length_N = (rd->length_N < 1) ? lN : rd->length_N;
 
 		if (		fmt == FORMAT_PLAIN_STDIN
 				|| fmt == FORMAT_PLAIN_TEXT) {
@@ -1163,17 +1164,13 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 				return ;
 			}
 
-			if (bF != 0 && lN < 1) {
+			if (lN < 1) {
 
-				/* We do not use the file size to guess the
-				 * length since there is an incremental dataset
-				 * memory allocation.
+				/* We do not use the actual file size to guess
+				 * the length since there is an incremental
+				 * dataset memory allocation.
 				 * */
-				lN = 1000;
-			}
-			else if (lN < 1) {
-
-				lN = rd->length_N;
+				lN = (rd->length_N < 1) ? 1000 : rd->length_N;
 			}
 		}
 		else if (fmt == FORMAT_BINARY_FLOAT) {
@@ -1394,7 +1391,7 @@ readLEGACY(read_t *rd, int dN)
 int readUpdate(read_t *rd)
 {
 	FILE		*fd;
-	int		dN, bN, tTOP, file_N = 0, ulN = 0;
+	int		dN, tTOP, file_N = 0, ulN = 0;
 
 	for (dN = 0; dN < PLOT_DATASET_MAX; ++dN) {
 
@@ -1402,7 +1399,6 @@ int readUpdate(read_t *rd)
 
 		if (fd != NULL) {
 
-			bN = 0;
 			file_N += 1;
 
 			tTOP = SDL_GetTicks() + 20;
@@ -1455,10 +1451,9 @@ int readUpdate(read_t *rd)
 #endif /* _LEGACY */
 
 				rd->data[dN].line_N++;
-				bN++;
 
 				if (		rd->data[dN].length_N < 1
-						&& plotDataSpaceLeft(rd->pl, dN) < 10) {
+						&& plotDataSpaceLeft(rd->pl, dN) < 3) {
 
 					plotDataGrowUp(rd->pl, dN);
 				}
@@ -1873,13 +1868,13 @@ configParseFSM(read_t *rd, parse_t *pa)
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
 
-					if (argi[0] > 0) {
+					if (argi[0] >= 0) {
 
 						failed = 0;
 						rd->length_N = argi[0];
 					}
 					else {
-						sprintf(msg_tbuf, "data length %i must be positive", argi[0]);
+						sprintf(msg_tbuf, "data length %i must be non-negative", argi[0]);
 					}
 				}
 				while (0);

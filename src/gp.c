@@ -5015,10 +5015,10 @@ int gp_Draw(gp_t *gp)
 static void
 gpHelp(gp_t *gp)
 {
-	printf(	"Usage: gp [-0kult] [filename] ...\n"
+	printf(	"Usage: gp [-h0kult] [filename] ...\n"
 		"  -0     Open stdin text stream\n"
-		"  -k#    Chunk size in bytes\n"
-		"  -u#    Waiting timeout in msec\n"
+		"  -k#    Chunk size (in bytes)\n"
+		"  -u#    Waiting timeout (in msec)\n"
 		"  -l#    Data length to allocate\n"
 		"  -t#    Time column default\n");
 }
@@ -5073,6 +5073,8 @@ gpGetOPT(gp_t *gp, char *argv[])
 							rd->chunk = argi;
 						}
 					}
+
+					break;
 				}
 				else if (argv[n][1] == 'u') {
 
@@ -5094,6 +5096,8 @@ gpGetOPT(gp_t *gp, char *argv[])
 							rd->timeout = argi;
 						}
 					}
+
+					break;
 				}
 				else if (argv[n][1] == 'l') {
 
@@ -5110,11 +5114,13 @@ gpGetOPT(gp_t *gp, char *argv[])
 
 					if (stoi(&rd->mk_config, &argi, op) != NULL) {
 
-						if (argi > 0) {
+						if (argi >= 0) {
 
 							rd->length_N = argi;
 						}
 					}
+
+					break;
 				}
 				else if (argv[n][1] == 't') {
 
@@ -5136,9 +5142,13 @@ gpGetOPT(gp_t *gp, char *argv[])
 							rd->timecol = argi;
 						}
 					}
+
+					break;
 				}
 				else {
-					ERROR("Unknown option \"%c\"\n", *op);
+					ERROR("Unknown arguments \"%s\"\n", argv[n]);
+
+					break;
 				}
 
 				op++;

@@ -39,10 +39,9 @@ chunk 4096
 #
 timeout 5000
 
-# Data length (number of lines to allocate) that is applied by default to
-# non-regular files like serial ports.
+# Data length to allocate (number of lines). Unlimited file grows if null.
 #
-length 1000
+length 0
 
 # Specify the window size at the startup.
 #
@@ -99,7 +98,7 @@ precision 9
 #
 hexadecimal 1
 
-# Column number to map on X axis when the file is opened from UI.
+# Default column number to map on X axis when the file is opened from UI.
 #
 timecol -1
 
