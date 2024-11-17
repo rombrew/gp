@@ -10,7 +10,7 @@ claim to replace all other plotters.
 * Multiple axes are supported by design.
 * Real-time plotting from multiple asynchronous sources.
 * Simple math operations like subtraction or polynomial fitting.
-* Data pick tool to extract accurate numeric values.
+* Data sample tool to extract accurate numeric values.
 * Static (from file) and dynamic (from UI) configuration.
 * Export screen or data to the file (PNG, SVG, CSV).
 
@@ -35,7 +35,7 @@ To compile GP you could use Makefile from source directory.
 
 ## Usage
 
-You can just use GP with a plain text files or CSV tables.
+You can just use GP to view a plain text file or CSV table.
 
 	$ gp file1.txt file2.csv ...
 
@@ -43,27 +43,25 @@ Note that first valid line of plain text (or CSV) file will be interpreted as
 description of the columns. Here is a simple example of the plain text file.
 
 	$ cat file1.txt
-	time@sec  var1@A  var2@V  hexpar@  ...
+	time@sec  var1@A  var2@V  hexvar  ...
 	0.1       0.0     0.0     0x0001
 	0.2       1.1     2.1     0x0035
 	0.3       1.5     3.4     0x0d1f
 	0.4       1.7     4.1     0x0e00
 	...
 
-You also can open a multiple files from UI to combine various columns from
-different files in a single plot. Also check for command line options help.
+You also can open a multiple files to combine various columns from different
+files in a single plot. Also check for command line options help.
 
 	$ gp -h
 
-## Regular configuration
+## Сonfiguration
 
 Take a look into configuration examples that describes most of the options.
 
 * [global.gp](config/global.gp)
 * [loadbin.gp](config/loadbin.gp)
 * [loadcsv.gp](config/loadcsv.gp)
-
-## Live configuration
 
 You can make real-time plot from raw serial device or from growing logfile.
 
@@ -74,5 +72,4 @@ You can make real-time plot from raw serial device or from growing logfile.
 * Improve embedded API.
 * Add a dependency based subtract calculation.
 * Optimize line drawing performance even more.
-
 

@@ -95,6 +95,10 @@ transparency 1
 #
 precision 9
 
+# Define whether to use hexadecimal format in numerical printouts.
+#
+hexadecimal 1
+
 # Column number to map on X axis when the file is opened from UI.
 #
 timecol -1
@@ -112,7 +116,7 @@ fastdraw 200
 #
 interpolation 1
 
-# Define the time gap threshold to use with unwrap feature.
+# Define the time gap threshold to use with unwrap and resample operation.
 #
 defungap 10
 

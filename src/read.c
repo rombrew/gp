@@ -667,7 +667,7 @@ void legacy_ConfigGRM(read_t *rd, const char *path, const char *confile,
 						if (cY != cYm) {
 
 							rd->page[pN].fig[fN].bY[N].busy = SUBTRACT_BINARY_SUBTRACTION;
-							rd->page[pN].fig[fN].bY[N].column_2 = cYm;
+							rd->page[pN].fig[fN].bY[N].column_Y = cYm;
 
 							N++;
 						}
@@ -2243,6 +2243,27 @@ configParseFSM(read_t *rd, parse_t *pa)
 				}
 				while (0);
 			}
+			else if (strcmp(tbuf, "hexadecimal") == 0) {
+
+				failed = 1;
+
+				do {
+					r = configToken(rd, pa);
+
+					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
+					else break;
+
+					if (argi[0] >= 0 && argi[0] <= 1) {
+
+						failed = 0;
+						rd->pl->fhexadecimal = argi[0];
+					}
+					else {
+						sprintf(msg_tbuf, "invalid hexadecimal %i", argi[0]);
+					}
+				}
+				while (0);
+			}
 			else if (strcmp(tbuf, "delim") == 0) {
 
 				failed = 1;
@@ -2874,7 +2895,8 @@ configParseFSM(read_t *rd, parse_t *pa)
 				}
 				while (0);
 			}
-			else if (strcmp(tbuf, "xscale") == 0 || strcmp(tbuf, "yscale") == 0) {
+			else if (	strcmp(tbuf, "xscale") == 0
+					|| strcmp(tbuf, "yscale") == 0) {
 
 				failed = 1;
 
@@ -2932,7 +2954,8 @@ configParseFSM(read_t *rd, parse_t *pa)
 				}
 				while (0);
 			}
-			else if (strcmp(tbuf, "xsubtract") == 0 || strcmp(tbuf, "ysubtract") == 0) {
+			else if (	strcmp(tbuf, "xsubtract") == 0
+					|| strcmp(tbuf, "ysubtract") == 0) {
 
 				failed = 1;
 
@@ -2988,7 +3011,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 							failed = 0;
 
 							rd->page[rd->page_N].fig[rd->figure_N].bX[N].busy = argi[1];
-							rd->page[rd->page_N].fig[rd->figure_N].bX[N].column_2 = argi[2];
+							rd->page[rd->page_N].fig[rd->figure_N].bX[N].column_Y = argi[2];
 						}
 					}
 					else if (argi[0] == 'y') {
@@ -3003,13 +3026,14 @@ configParseFSM(read_t *rd, parse_t *pa)
 							failed = 0;
 
 							rd->page[rd->page_N].fig[rd->figure_N].bY[N].busy = argi[1];
-							rd->page[rd->page_N].fig[rd->figure_N].bY[N].column_2 = argi[2];
+							rd->page[rd->page_N].fig[rd->figure_N].bY[N].column_Y = argi[2];
 						}
 					}
 				}
 				while (0);
 			}
-			else if (strcmp(tbuf, "xfilter") == 0 || strcmp(tbuf, "yfilter") == 0) {
+			else if (	strcmp(tbuf, "xfilter") == 0
+					|| strcmp(tbuf, "yfilter") == 0) {
 
 				failed = 1;
 
@@ -3661,7 +3685,7 @@ readTimeDataMap(plot_t *pl, int dN, int cNX, int cNY)
 }
 
 static int
-readScaleDataMap(plot_t *pl, int dN, int cN, subtract_t *sb)
+readScaleDataMap(plot_t *pl, int dN, int cNT, int cN, subtract_t *sb)
 {
 	int		N, gN, cMAP;
 
@@ -3723,7 +3747,7 @@ readScaleDataMap(plot_t *pl, int dN, int cN, subtract_t *sb)
 				|| sb[N].busy == SUBTRACT_BINARY_HYPOTENUSE) {
 
 			cMAP = plotGetSubtractBinary(pl, dN, sb[N].busy,
-					cN, sb[N].column_2);
+					cN, sb[N].column_Y);
 
 			if (cMAP != -1) {
 
@@ -3734,7 +3758,7 @@ readScaleDataMap(plot_t *pl, int dN, int cN, subtract_t *sb)
 				|| sb[N].busy == SUBTRACT_FILTER_CUMULATIVE
 				|| sb[N].busy == SUBTRACT_FILTER_LOW_PASS) {
 
-			cMAP = plotGetSubtractFilter(pl, dN, cN,
+			cMAP = plotGetSubtractFilter(pl, dN, cNT, cN,
 					sb[N].busy, sb[N].args[0]);
 
 			if (cMAP != -1) {
@@ -3744,7 +3768,7 @@ readScaleDataMap(plot_t *pl, int dN, int cN, subtract_t *sb)
 		}
 		else if (sb[N].busy == SUBTRACT_FILTER_BITMASK) {
 
-			cMAP = plotGetSubtractFilter(pl, dN, cN, sb[N].busy,
+			cMAP = plotGetSubtractFilter(pl, dN, cNT, cN, sb[N].busy,
 					sb[N].args[0] + sb[N].args[1] * (double) 0x100U);
 
 			if (cMAP != -1) {
@@ -3803,8 +3827,8 @@ void readSelectPage(read_t *rd, int pN)
 			cX = uN.X;
 			cY = uN.Y;
 
-			cX = readScaleDataMap(pl, pg->fig[N].dN, cX, pg->fig[N].bX);
-			cY = readScaleDataMap(pl, pg->fig[N].dN, cY, pg->fig[N].bY);
+			cX = readScaleDataMap(pl, pg->fig[N].dN, -1, cX, pg->fig[N].bX);
+			cY = readScaleDataMap(pl, pg->fig[N].dN, cX, cY, pg->fig[N].bY);
 
 			plotFigureAdd(pl, N, pg->fig[N].dN, cX, cY, pg->fig[N].aX,
 					pg->fig[N].aY, pg->fig[N].label);
@@ -4007,8 +4031,8 @@ void readCombinePage(read_t *rd, int pN, int remap)
 			cX = uN.X;
 			cY = uN.Y;
 
-			cX = readScaleDataMap(pl, pg->fig[N].dN, cX, pg->fig[N].bX);
-			cY = readScaleDataMap(pl, pg->fig[N].dN, cY, pg->fig[N].bY);
+			cX = readScaleDataMap(pl, pg->fig[N].dN, -1, cX, pg->fig[N].bX);
+			cY = readScaleDataMap(pl, pg->fig[N].dN, cX, cY, pg->fig[N].bY);
 
 			plotFigureAdd(pl, fN, pg->fig[N].dN, cX, cY, aX, aY, pg->fig[N].label);
 

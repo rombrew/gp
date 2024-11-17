@@ -43,10 +43,10 @@
 #define PLOT_CHUNK_CACHE			4
 #define PLOT_RCACHE_SIZE			32
 #define PLOT_SLICE_SPAN				4
-#define PLOT_AXES_MAX				9
-#define PLOT_FIGURE_MAX 			8
-#define PLOT_DATA_BOX_MAX			8
-#define PLOT_MEDIAN_MAX 			91
+#define PLOT_AXES_MAX				10
+#define PLOT_FIGURE_MAX 			10
+#define PLOT_DATA_BOX_MAX			10
+#define PLOT_MEDIAN_MAX 			37
 #define PLOT_POLYFIT_MAX			7
 #define PLOT_SUBTRACT				20
 #define PLOT_GROUP_MAX				40
@@ -104,6 +104,12 @@ enum {
 };
 
 enum {
+	UNWRAP_NONE			= 0,
+	UNWRAP_OVERFLOW,
+	UNWRAP_BURST
+};
+
+enum {
 	SKETCH_STARTED			= 0,
 	SKETCH_INTERRUPTED,
 	SKETCH_FINISHED
@@ -112,6 +118,7 @@ enum {
 enum {
 	DATA_BOX_FREE			= 0,
 	DATA_BOX_SLICE,
+	DATA_BOX_PICK,
 	DATA_BOX_POLYFIT
 };
 
@@ -175,9 +182,10 @@ typedef struct {
 
 				struct {
 
-					int	column_1;
-					int	column_2;
-					int	column_3;
+					int	column_X;
+					int	column_Y;
+
+					int	column_T;
 
 					int	length;
 					int	unwrap;
@@ -200,7 +208,7 @@ typedef struct {
 
 				struct {
 
-					int	column_1;
+					int	column_X;
 
 					double	scale;
 					double	offset;
@@ -232,17 +240,18 @@ typedef struct {
 
 				struct {
 
-					int	column_1;
-					int	column_2;
+					int	column_X;
+					int	column_Y;
 				}
 				binary;
 
 				struct {
 
-					int	column_1;
+					int	column_X;
+					int	column_Y;
 
 					double	gain;
-					double	state;
+					double	state[2];
 				}
 				filter;
 			}
@@ -324,10 +333,16 @@ typedef struct {
 		double		mark_Y[PLOT_MARK_MAX];
 
 		int		slice_busy;
+		const fval_t	*slice_row;
+		int		slice_id_N;
 		double		slice_X;
 		double		slice_Y;
+
+		int		slice_base_catch;
 		double		slice_base_X;
 		double		slice_base_Y;
+
+		int		brush_N;
 
 		char		label[PLOT_STRING_MAX];
 	}
@@ -378,6 +393,19 @@ typedef struct {
 	int			slice_on;
 	int			slice_mode_N;
 	int			slice_axis_N;
+
+	int			pick_on;
+
+	int			mark_on;
+	int			mark_length;
+	int			mark_size;
+	int			mark_density;
+
+	int			brush_on;
+	int			brush_box_X;
+	int			brush_box_Y;
+	int			brush_cur_X;
+	int			brush_cur_Y;
 
 	struct {
 
@@ -446,11 +474,6 @@ typedef struct {
 	int			hover_data_box;
 	int			hover_axis;
 
-	int			mark_on;
-	int			mark_count;
-	int			mark_size;
-	int			mark_density;
-
 	int			interpolation;
 	int			defungap;
 
@@ -459,6 +482,7 @@ typedef struct {
 
 	int			transparency;
 	int			fprecision;
+	int			fhexadecimal;
 	int			lz4_compress;
 
 	int			shift_on;
@@ -480,6 +504,7 @@ unsigned long long plotDataMemoryCached(plot_t *pl, int dN);
 
 void plotDataAlloc(plot_t *pl, int dN, int cN, int lN);
 void plotDataResize(plot_t *pl, int dN, int lN);
+int plotDataLength(plot_t *pl, int dN);
 int plotDataSpaceLeft(plot_t *pl, int dN);
 void plotDataGrowUp(plot_t *pl, int dN);
 void plotDataSubtractCompute(plot_t *pl, int dN, int sN);
@@ -495,6 +520,7 @@ void plotDataRangeCacheSubtractClean(plot_t *pl);
 int plotDataRangeCacheFetch(plot_t *pl, int dN, int cN);
 
 void plotAxisLabel(plot_t *pl, int aN, const char *label);
+int plotAxisRangeGet(plot_t *pl, int aN, double *pmin, double *pmax);
 void plotAxisScaleManual(plot_t *pl, int aN, double min, double max);
 void plotAxisScaleAuto(plot_t *pl, int aN);
 void plotAxisScaleAutoCond(plot_t *pl, int aN, int bN);
@@ -514,6 +540,7 @@ void plotAxisSlave(plot_t *pl, int aN, int bN, double scale, double offset, int 
 void plotAxisRemove(plot_t *pl, int aN);
 
 void plotFigureAdd(plot_t *pl, int fN, int dN, int nX, int nY, int aX, int aY, const char *label);
+void plotTotalSubtractGarbage(plot_t *pl);
 void plotFigureRemove(plot_t *pl, int fN);
 void plotFigureGarbage(plot_t *pl, int dN);
 void plotFigureMoveAxes(plot_t *pl, int fN);
@@ -523,21 +550,20 @@ void plotFigureExchange(plot_t *pl, int fN_1, int fN_2);
 int plotFigureSelected(plot_t *pl);
 int plotFigureAnyData(plot_t *pl);
 
-tuple_t plotGetSubtractTimeMedian(plot_t *pl, int dN, int cNX, int cNY,
-		int length, int unwrap, int opdata);
+tuple_t plotGetSubtractTimeMedian(plot_t *pl, int dN, int cNX, int cNY, int length, int unwrap, int opdata);
 int plotGetSubtractScale(plot_t *pl, int dN, int cN, double scale, double offset);
 int plotGetSubtractResample(plot_t *pl, int dN, int cN_X, int in_dN, int in_cN_X, int in_cN_Y);
 int plotGetSubtractBinary(plot_t *pl, int dN, int opSUB, int cN_1, int cN_2);
-int plotGetSubtractFilter(plot_t *pl, int dN, int cN, int opSUB, double gain);
+int plotGetSubtractFilter(plot_t *pl, int dN, int cNX, int cNY, int opSUB, double gain);
 int plotGetSubtractMedian(plot_t *pl, int dN, int cN, int opSUB, int length);
 int plotGetFreeFigure(plot_t *pl);
 
-int plotFigureSubtractGetMedianConfig(plot_t *pl, int fN, int config[3]);
+int plotFigureSubtractGetMedianConfig(plot_t *pl, int fN, int *length, int *unwrap, int *opdata);
 void plotFigureSubtractTimeMedian(plot_t *pl, int fN_1, int length, int unwrap, int opdata);
 void plotFigureSubtractScale(plot_t *pl, int fN_1, int aBUSY, double scale, double offset);
 void plotFigureSubtractFilter(plot_t *pl, int fN_1, int opSUB, double gain);
 void plotFigureSubtractSwitch(plot_t *pl, int opSUB);
-void plotFigureSubtractResample(plot_t *pl, int fN);
+void plotTotalSubtractResample(plot_t *pl, int dN, double tmin, double tmax);
 
 int plotDataBoxPolyfit(plot_t *pl, int fN);
 void plotFigureSubtractPolyfit(plot_t *pl, int fN_1, int N0, int N1);
@@ -553,6 +579,8 @@ void plotGroupScale(plot_t *pl, int gN, int knob, double scale, double offset);
 
 void plotSliceSwitch(plot_t *pl);
 void plotSliceTrack(plot_t *pl, int cur_X, int cur_Y);
+void plotPickTrack(plot_t *pl, int cur_X, int cur_Y);
+void plotBrushErase(plot_t *pl);
 
 int plotLegendGetByClick(plot_t *pl, int cur_X, int cur_Y);
 int plotLegendBoxGetByClick(plot_t *pl, int cur_X, int cur_Y);

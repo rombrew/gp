@@ -264,8 +264,8 @@ void editRaise(edit_t *ed, int id, const char *title, const char *text, int sx, 
 	ed->box_Y = ed->cur_Y;
 
 	strcpy(ed->text, text);
-	ed->text_cur = ed->text + strlen(ed->text);
 
+	ed->text_cur = ed->text + strlen(ed->text);
 	ed->list_fmt = "";
 
 	editBuild(ed, 0);

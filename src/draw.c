@@ -1443,14 +1443,27 @@ void drawDashCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 
 	l = d * h;
 
-	w1 = (ys - ye) * (lcb.min_x * 16 - xe + 8) - (xs - xe) * (lcb.min_y * 16 - ye + 8);
-	w2 = (xe - xs) * (lcb.min_x * 16 - xs + 8) + (ye - ys) * (lcb.min_y * 16 - ys + 8);
+	if (fys < fye) {
 
-	w1dx = (ys - ye) * 16;
-	w2dx = (xe - xs) * 16;
+		w1 = (ys - ye) * (lcb.min_x * 16 - xe + 8) - (xs - xe) * (lcb.min_y * 16 - ye + 8);
+		w2 = (xs - xe) * (lcb.min_x * 16 - xe + 8) + (ys - ye) * (lcb.min_y * 16 - ye + 8);
 
-	w1dy = - (xs - xe) * 16;
-	w2dy = (ye - ys) * 16;
+		w1dx = (ys - ye) * 16;
+		w2dx = (xs - xe) * 16;
+
+		w1dy = - (xs - xe) * 16;
+		w2dy = (ys - ye) * 16;
+	}
+	else {
+		w1 = (ys - ye) * (lcb.min_x * 16 - xe + 8) - (xs - xe) * (lcb.min_y * 16 - ye + 8);
+		w2 = (xe - xs) * (lcb.min_x * 16 - xs + 8) + (ye - ys) * (lcb.min_y * 16 - ys + 8);
+
+		w1dx = (ys - ye) * 16;
+		w2dx = (xe - xs) * 16;
+
+		w1dy = - (xs - xe) * 16;
+		w2dy = (ye - ys) * 16;
+	}
 
 	context = dw->dash_context;
 
@@ -3197,12 +3210,12 @@ int drawDotTrial(draw_t *dw, clipBox_t *cb, double fxs, double fys,
 void drawMarkCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs, double fys,
 		int rsize, int shape, int ncol, int thickness)
 {
-	double		r2, r6;
+	double		r2, r6, r3, r5, r8, r9;
 
 	if (shape == SHAPE_CIRCLE) {
 
 		r2 = (double) rsize * 0.5;
-		r6 = (double) rsize * 0.86603;
+		r6 = (double) rsize * 0.8660;
 
 		drawLineCanvas(dw, surface, cb, fxs - rsize, fys, fxs - r6, fys - r2, ncol, thickness);
 		drawLineCanvas(dw, surface, cb, fxs - r6, fys - r2, fxs - r2, fys - r6, ncol, thickness);
@@ -3217,38 +3230,58 @@ void drawMarkCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 		drawLineCanvas(dw, surface, cb, fxs - r6, fys + r2, fxs - r2, fys + r6, ncol, thickness);
 		drawLineCanvas(dw, surface, cb, fxs - r2, fys + r6, fxs, fys + rsize, ncol, thickness);
 	}
+	else if (shape == SHAPE_STARLET) {
+
+		r2 = (double) 0.4;
+		r6 = (double) rsize * 1.2;
+
+		r3 = (double) rsize * 0.3708;
+		r5 = (double) rsize * 0.7054;
+		r8 = (double) rsize * 0.9708;
+		r9 = (double) rsize * 1.1413;
+
+		drawLineCanvas(dw, surface, cb, fxs, fys + r6*r2, fxs + r5, fys + r8, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs + r5, fys + r8, fxs + r9*r2, fys + r3*r2, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs + r9*r2, fys + r3*r2, fxs + r9, fys - r3, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs + r9, fys - r3, fxs + r5*r2, fys - r8*r2, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs + r5*r2, fys - r8*r2, fxs, fys - r6, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs, fys - r6, fxs - r5*r2, fys - r8*r2, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs - r5*r2, fys - r8*r2, fxs - r9, fys - r3, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs - r9, fys - r3, fxs - r9*r2, fys + r3*r2, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs - r9*r2, fys + r3*r2, fxs - r5, fys + r8, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs - r5, fys + r8, fxs, fys + r6*r2, ncol, thickness);
+	}
+	else if (shape == SHAPE_HUBCAP) {
+
+		r2 = (double) rsize * 0.7;
+
+		drawLineCanvas(dw, surface, cb, fxs - r2, fys + rsize, fxs + r2, fys + rsize, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs + r2, fys + rsize, fxs, fys - rsize, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs, fys - rsize, fxs - r2, fys + rsize, ncol, thickness);
+	}
 	else if (shape == SHAPE_RECTANGLE) {
 
-		drawLineCanvas(dw, surface, cb, fxs - rsize, fys - rsize, fxs + rsize, fys - rsize, ncol, thickness);
-		drawLineCanvas(dw, surface, cb, fxs - rsize, fys + rsize, fxs + rsize, fys + rsize, ncol, thickness);
-		drawLineCanvas(dw, surface, cb, fxs - rsize, fys - rsize, fxs - rsize, fys + rsize, ncol, thickness);
-		drawLineCanvas(dw, surface, cb, fxs + rsize, fys - rsize, fxs + rsize, fys + rsize, ncol, thickness);
+		r2 = (double) rsize * 0.9;
+
+		drawLineCanvas(dw, surface, cb, fxs - r2, fys - r2, fxs + r2, fys - r2, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs - r2, fys + r2, fxs + r2, fys + r2, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs - r2, fys - r2, fxs - r2, fys + r2, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs + r2, fys - r2, fxs + r2, fys + r2, ncol, thickness);
+	}
+	else if (shape == SHAPE_SNOWFLAKE) {
+
+		r2 = (double) rsize * 0.7;
+
+		drawLineCanvas(dw, surface, cb, fxs - rsize, fys, fxs + rsize, fys, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs, fys - rsize, fxs, fys + rsize, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs - r2, fys - r2, fxs + r2, fys + r2, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs - r2, fys + r2, fxs + r2, fys - r2, ncol, thickness);
 	}
 	else if (shape == SHAPE_TRIANGLE) {
 
 		drawLineCanvas(dw, surface, cb, fxs - rsize, fys - rsize, fxs + rsize, fys - rsize, ncol, thickness);
 		drawLineCanvas(dw, surface, cb, fxs + rsize, fys - rsize, fxs, fys + rsize, ncol, thickness);
 		drawLineCanvas(dw, surface, cb, fxs, fys + rsize, fxs - rsize, fys - rsize, ncol, thickness);
-	}
-	else if (shape == SHAPE_ASTERIX) {
-
-		drawLineCanvas(dw, surface, cb, fxs - rsize, fys, fxs + rsize, fys, ncol, thickness);
-		drawLineCanvas(dw, surface, cb, fxs, fys - rsize, fxs, fys + rsize, ncol, thickness);
-		drawLineCanvas(dw, surface, cb, fxs - rsize, fys - rsize, fxs + rsize, fys + rsize, ncol, thickness);
-		drawLineCanvas(dw, surface, cb, fxs - rsize, fys + rsize, fxs + rsize, fys - rsize, ncol, thickness);
-	}
-	else if (shape == SHAPE_STAR) {
-
-		r2 = (double) rsize * 0.5;
-
-		drawLineCanvas(dw, surface, cb, fxs - rsize, fys - rsize, fxs, fys - r2, ncol, thickness);
-		drawLineCanvas(dw, surface, cb, fxs, fys - r2, fxs + rsize, fys - rsize, ncol, thickness);
-		drawLineCanvas(dw, surface, cb, fxs - rsize, fys + rsize, fxs, fys + r2, ncol, thickness);
-		drawLineCanvas(dw, surface, cb, fxs, fys + r2, fxs + rsize, fys + rsize, ncol, thickness);
-		drawLineCanvas(dw, surface, cb, fxs - rsize, fys + rsize, fxs - r2, fys, ncol, thickness);
-		drawLineCanvas(dw, surface, cb, fxs - r2, fys, fxs - rsize, fys - rsize, ncol, thickness);
-		drawLineCanvas(dw, surface, cb, fxs + rsize, fys + rsize, fxs + r2, fys, ncol, thickness);
-		drawLineCanvas(dw, surface, cb, fxs + r2, fys, fxs + rsize, fys - rsize, ncol, thickness);
 	}
 	else if (shape == SHAPE_SHARP) {
 
@@ -3268,9 +3301,17 @@ void drawMarkCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 		drawLineCanvas(dw, surface, cb, fxs - r2, fys - rsize, fxs - r2, fys + rsize, ncol, thickness);
 		drawLineCanvas(dw, surface, cb, fxs + r2, fys - rsize, fxs + r2, fys + rsize, ncol, thickness);
 	}
-	else if (shape == SHAPE_FILLED) {
+	else if (shape == SHAPE_FILLING) {
 
-		drawDotCanvas(dw, surface, cb, fxs, fys, rsize * 2.0, ncol, 0);
+		drawDotCanvas(dw, surface, cb, fxs, fys, rsize * 1.8, ncol, 0);
+	}
+	else if (shape == SHAPE_SYMBOL) {
+
+		r2 = (double) rsize * 0.9;
+
+		drawLineCanvas(dw, surface, cb, fxs, fys - r2, fxs, fys + r2, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs - r2, fys + r2, fxs + r2, fys + r2, ncol, thickness);
+		drawLineCanvas(dw, surface, cb, fxs - r2, fys - r2, fxs + r2, fys - r2, ncol, thickness);
 	}
 }
 

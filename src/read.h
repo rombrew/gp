@@ -39,10 +39,11 @@
 #define GP_MIN_SIZE_X		640
 #define GP_MIN_SIZE_Y		480
 
-#define GP_CONFIG_VERSION	16
+#define GP_CONFIG_VERSION	17
 
 enum {
 	FORMAT_NONE			= 0,
+	FORMAT_DATA_BLANK,
 	FORMAT_PLAIN_STDIN,
 	FORMAT_PLAIN_TEXT,
 	FORMAT_BINARY_FLOAT,
@@ -78,7 +79,7 @@ markup_t;
 typedef struct {
 
 	int		busy;
-	int		column_2;
+	int		column_Y;
 
 	double		args[2];
 }

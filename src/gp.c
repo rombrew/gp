@@ -113,6 +113,7 @@ struct gp_struct {
 	int		data_N;
 	int		grp_N;
 	int		line_N;
+	int		blank_N;
 
 	int		screen_take;
 	int		screen_yank;
@@ -121,12 +122,15 @@ struct gp_struct {
 	int		combine_on;
 	int		hover_box;
 
+	double		resample_range[2];
+
 	int		layout_page_box;
 	int		layout_page_title_offset;
 	int		layout_menu_page_margin;
 	int		layout_menu_dir_margin;
 	int		layout_menu_dataset_margin;
 	int		layout_menu_dataset_minimal;
+	int		layout_menu_resample_crop;
 
 	struct dirent_stat	sb;
 
@@ -150,6 +154,8 @@ enum {
 static void
 gpMakeHello(gp_t *gp)
 {
+	read_t		*rd = gp->rd;
+
 	const fval_t omul[] = {
 
 		21.180, 25.120, 20.298, 42.448, 19.203, 72.868, 18.649,
@@ -192,30 +198,123 @@ gpMakeHello(gp_t *gp)
 		plotDataInsert(gp->pl, dN, omul + gp->pl->data[dN].column_N * N);
 	}
 
-	gp->rd->data[dN].format = FORMAT_PLAIN_TEXT;
-	gp->rd->data[dN].column_N = 2;
-	gp->rd->data[dN].file[0] = 0;
-	gp->rd->files_N = 1;
-	gp->rd->bind_N = dN;
+	rd->data[dN].format = FORMAT_PLAIN_TEXT;
+	rd->data[dN].column_N = 2;
+	rd->data[dN].file[0] = 0;
+	rd->files_N = 1;
+	rd->bind_N = dN;
 
-	gp->rd->page_N = pN;
-	gp->rd->figure_N = -1;
+	rd->page_N = pN;
+	rd->figure_N = -1;
 
-	gp->rd->page[pN].busy = 1;
+	rd->page[pN].busy = 1;
 
-	strcpy(gp->rd->page[pN].title, "Hello, I am Omul");
-	strcpy(gp->rd->page[pN].fig[0].label, "Omul");
+	strcpy(rd->page[pN].title, "Hello, I am Omul");
+	strcpy(rd->page[pN].fig[0].label, "Omul");
 
-	gp->rd->page[pN].fig[0].busy = 1;
-	gp->rd->page[pN].fig[0].drawing = FIGURE_DRAWING_LINE;
-	gp->rd->page[pN].fig[0].width = 6;
-	gp->rd->page[pN].fig[0].dN = dN;
-	gp->rd->page[pN].fig[0].cX = 0;
-	gp->rd->page[pN].fig[0].cY = 1;
-	gp->rd->page[pN].fig[0].aX = 0;
-	gp->rd->page[pN].fig[0].aY = 1;
+	rd->page[pN].fig[0].busy = 1;
+	rd->page[pN].fig[0].drawing = FIGURE_DRAWING_LINE;
+	rd->page[pN].fig[0].width = 6;
+	rd->page[pN].fig[0].dN = dN;
+	rd->page[pN].fig[0].cX = 0;
+	rd->page[pN].fig[0].cY = 1;
+	rd->page[pN].fig[0].aX = 0;
+	rd->page[pN].fig[0].aY = 1;
 }
 #endif /* _EMBED_GP */
+
+static int
+gpGetBlankData(read_t *rd)
+{
+	int		N, dN_MAX, dN = 0;
+
+	for (N = 0; N < PLOT_DATASET_MAX; ++N) {
+
+		if (rd->data[N].format == FORMAT_DATA_BLANK) {
+
+			dN = N;
+			break;
+		}
+
+		if (		rd->data[dN].format != FORMAT_NONE
+				&& rd->data[N].column_N != 0) {
+
+			if (rd->data[N].column_N > dN_MAX) {
+
+				dN_MAX = rd->data[N].column_N;
+				dN = N;
+			}
+		}
+	}
+
+	return dN;
+}
+
+static int
+gpGetFreeData(read_t *rd)
+{
+	int		N, dN = -1;
+
+	for (N = 0; N < PLOT_DATASET_MAX; ++N) {
+
+		if (		rd->data[N].format == FORMAT_NONE
+				&& rd->data[N].file[0] == 0) {
+
+			dN = N;
+			break;
+		}
+	}
+
+	return dN;
+}
+
+static void
+gpMakeBlank(gp_t *gp, int length)
+{
+	read_t		*rd = gp->rd;
+
+	int		N, dN;
+
+	dN = gp->blank_N;
+
+	if (rd->data[dN].format != FORMAT_DATA_BLANK) {
+
+		dN = gpGetBlankData(rd);
+	}
+
+	if (rd->data[dN].format != FORMAT_DATA_BLANK) {
+
+		dN = gpGetFreeData(rd);
+
+		if (dN < 0) {
+
+			ERROR("Unable to get free dataset\n");
+			return ;
+		}
+	}
+
+	if (length < 1 || length > 262144000) {
+
+		ERROR("Blank dataset length %i is out of range\n", length);
+		return ;
+	}
+
+	plotDataAlloc(gp->pl, dN, 1, length + 1);
+
+	rd->data[dN].row[0] = (fval_t) 0.;
+
+	for (N = 0; N < length; ++N) {
+
+		plotDataInsert(gp->pl, dN, rd->data[dN].row);
+	}
+
+	rd->data[dN].format = FORMAT_DATA_BLANK;
+	rd->data[dN].column_N = 1;
+	rd->data[dN].length_N = length;
+	rd->data[dN].file[0] = 0;
+
+	gp->blank_N = dN;
+}
 
 static void
 gpFileGetPath(gp_t *gp)
@@ -282,6 +381,7 @@ gpDefaultFile(gp_t *gp)
 				"density 40\n"
 				"transparency 1\n"
 				"precision 9\n"
+				"hexadecimal 1\n"
 				"timecol -1\n"
 				"shortfilename 1\n"
 				"fastdraw 200\n"
@@ -343,6 +443,7 @@ gpWriteFile(gp_t *gp)
 		fprintf(fd, "density %i\n", pl->mark_density);
 		fprintf(fd, "transparency %i\n", pl->transparency);
 		fprintf(fd, "precision %i\n", pl->fprecision);
+		fprintf(fd, "hexadecimal %i\n", pl->fhexadecimal);
 		fprintf(fd, "timecol %i\n", rd->timecol);
 		fprintf(fd, "shortfilename %i\n", rd->shortfilename);
 		fprintf(fd, "fastdraw %i\n", rd->fastdraw);
@@ -367,20 +468,19 @@ gpFileExist(const char *file)
 }
 
 static int
-gpScreenLength(plot_t *pl)
+gpFullLength(plot_t *pl)
 {
 	return pl->screen.max_x / pl->layout_font_long;
 }
 
 static void
-gpTextLeftCrop(plot_t *pl, char *sbuf, const char *text, int margin)
+gpTextLeftCrop(plot_t *pl, char *sbuf, const char *text, int allowed)
 {
-	int		length, allowed;
+	int		length;
 
-	allowed = gpScreenLength(pl) - margin;
 	length = utf8_length(text);
 
-	if (length > (allowed - 1)) {
+	if (length > allowed - 1) {
 
 		text = utf8_skip(text, length - (allowed - 1));
 
@@ -393,9 +493,26 @@ gpTextLeftCrop(plot_t *pl, char *sbuf, const char *text, int margin)
 }
 
 static void
-gpTextSepFill(char *sbuf, int len)
+gpTextFull(plot_t *pl, char *sbuf, const char *text, int margin)
+{
+	gpTextLeftCrop(pl, sbuf, text, gpFullLength(pl) - margin);
+}
+
+static void
+gpTextSpaceAdd(char *sbuf, int len)
+{
+	sbuf += strlen(sbuf);
+
+	memset(sbuf, ' ', len);
+
+	sbuf[len] = 0;
+}
+
+static void
+gpTextSepFull(char *sbuf, int len)
 {
 	memset(sbuf, '-', len);
+
 	sbuf[len] = 0;
 }
 
@@ -469,6 +586,7 @@ gpFontLayout(gp_t *gp)
 	gp->layout_menu_dir_margin = 36;
 	gp->layout_menu_dataset_margin = 16;
 	gp->layout_menu_dataset_minimal = 42;
+	gp->layout_menu_resample_crop = 32;
 }
 
 static void
@@ -528,7 +646,7 @@ gpMakePageMenu(gp_t *gp)
 	do {
 		if (rd->page[pN].busy != 0) {
 
-			gpTextLeftCrop(gp->pl, gp->sbuf[1], rd->page[pN].title,
+			gpTextFull(gp->pl, gp->sbuf[1], rd->page[pN].title,
 					gp->layout_menu_page_margin);
 
 			sprintf(gp->sbuf[0], "%3d %s", pN, gp->sbuf[1]);
@@ -690,7 +808,7 @@ gpMakeDirMenu(gp_t *gp)
 	char			*la = gp->la_menu;
 	int			len, pad, N, kmg;
 
-	len = gpScreenLength(gp->pl) - gp->layout_menu_dir_margin;
+	len = gpFullLength(gp->pl) - gp->layout_menu_dir_margin;
 
 	if (dirent_open(&gp->sb, gp->cwd) == ENT_OK) {
 
@@ -702,14 +820,14 @@ gpMakeDirMenu(gp_t *gp)
 		gp->cwd_ok = (dirent_open(&gp->sb, gp->cwd) == ENT_OK) ? 1 : 0;
 	}
 
-	gpTextLeftCrop(gp->pl, gp->sbuf[1], gp->cwd, gp->layout_menu_dir_margin);
+	gpTextFull(gp->pl, gp->sbuf[1], gp->cwd, gp->layout_menu_dir_margin);
 
 	sprintf(gp->sbuf[0], "[%s]", gp->sbuf[1]);
 
 	strcpy(la, gp->sbuf[0]);
 	la += strlen(la) + 1;
 
-	gpTextSepFill(gp->sbuf[0], len + 26);
+	gpTextSepFull(gp->sbuf[0], len + 26);
 
 	strcpy(la, gp->sbuf[0]);
 	la += strlen(la) + 1;
@@ -741,7 +859,7 @@ gpMakeDirMenu(gp_t *gp)
 
 					strcpy(gp->d_names[N], gp->sbuf[0]);
 
-					gpTextLeftCrop(gp->pl, gp->sbuf[1], gp->sb.name,
+					gpTextFull(gp->pl, gp->sbuf[1], gp->sb.name,
 							gp->layout_menu_dir_margin);
 
 					pad = len - utf8_length(gp->sbuf[1]);
@@ -783,7 +901,7 @@ gpMakeDirMenu(gp_t *gp)
 						++kmg;
 					}
 
-					gpTextLeftCrop(gp->pl, gp->sbuf[1], gp->sb.name,
+					gpTextFull(gp->pl, gp->sbuf[1], gp->sb.name,
 							gp->layout_menu_dir_margin);
 
 					pad = len - utf8_length(gp->sbuf[1]);
@@ -901,73 +1019,87 @@ gpDirWalk(gp_t *gp, int dir_N, int revert)
 	return walk;
 }
 
+static const char *
+gpSymDatasetFormat(gp_t *gp, int dN)
+{
+	read_t		*rd = gp->rd;
+	const char	*sym;
+
+	switch (rd->data[dN].format) {
+
+		case FORMAT_NONE:
+			sym = "NONE  ";
+			break;
+
+		case FORMAT_DATA_BLANK:
+			sym = "BLANK ";
+			break;
+
+		case FORMAT_PLAIN_STDIN:
+			sym = "STDIN ";
+			break;
+
+		case FORMAT_PLAIN_TEXT:
+			sym = "TEXT  ";
+			break;
+
+		case FORMAT_BINARY_FLOAT:
+			sym = "FLOAT ";
+			break;
+
+		case FORMAT_BINARY_DOUBLE:
+			sym = "DOUBLE";
+			break;
+
+		default:
+			sym = "LEGACY";
+			break;
+	}
+
+	return sym;
+}
+
 static void
-gpInsertColumn(gp_t *gp, char **la, int dN, int cN)
+gpMenuInsertColumn(gp_t *gp, int dN, int cN)
 {
 	read_t		*rd = gp->rd;
 
 	sprintf(gp->sbuf[0], "[%3i] %.75s", cN, rd->data[dN].label[cN]);
 
-	if (rd->data[dN].hint[cN] == DATA_HINT_FLOAT) {
+	switch (rd->data[dN].hint[cN]) {
 
-		strcat(gp->sbuf[0], " (DEC)");
-	}
-	else if (rd->data[dN].hint[cN] == DATA_HINT_HEX) {
+		case DATA_HINT_FLOAT:
+			strcat(gp->sbuf[0], " (DEC)");
+			break;
 
-		strcat(gp->sbuf[0], " (HEX)");
-	}
-	else if (rd->data[dN].hint[cN] == DATA_HINT_OCT) {
+		case DATA_HINT_HEX:
+			strcat(gp->sbuf[0], " (HEX)");
+			break;
 
-		strcat(gp->sbuf[0], " (OCT)");
-	}
-	else {
-		strcat(gp->sbuf[0], "      ");
-	}
+		case DATA_HINT_OCT:
+			strcat(gp->sbuf[0], " (OCT)");
+			break;
 
-	strcpy(*la, gp->sbuf[0]);
-	*la += strlen(*la) + 1;
+		default:
+			strcat(gp->sbuf[0], "      ");
+			break;
+	}
 }
 
 static void
-gpInsertDataset(gp_t *gp, char **la, int dN)
+gpMenuInsertDataset(gp_t *gp, int dN)
 {
 	read_t		*rd = gp->rd;
-	char		*file, *sformat;
+	const char	*file, *symtype;
 
 	file = rd->data[dN].file;
-	file = (file[0] == '.' && file[1] == '/')
-		? file + 2 : file;
+	file = (file[0] == '.' && file[1] == '/') ? file + 2 : file;
 
-	gpTextLeftCrop(gp->pl, gp->sbuf[1], file, gp->layout_menu_dataset_margin);
+	gpTextFull(gp->pl, gp->sbuf[1], file, gp->layout_menu_dataset_margin);
 
-	if (rd->data[dN].format == FORMAT_NONE) {
+	symtype = gpSymDatasetFormat(gp, dN);
 
-		sformat = "NONE  ";
-	}
-	else if (rd->data[dN].format == FORMAT_PLAIN_STDIN) {
-
-		sformat = "STDIN ";
-	}
-	else if (rd->data[dN].format == FORMAT_PLAIN_TEXT) {
-
-		sformat = "TEXT  ";
-	}
-	else if (rd->data[dN].format == FORMAT_BINARY_FLOAT) {
-
-		sformat = "FLOAT ";
-	}
-	else if (rd->data[dN].format == FORMAT_BINARY_DOUBLE) {
-
-		sformat = "DOUBLE";
-	}
-	else {
-		sformat = "LEGACY";
-	}
-
-	sprintf(gp->sbuf[0], "[%2i] %6s %s", dN, sformat, gp->sbuf[1]);
-
-	strcpy(*la, gp->sbuf[0]);
-	*la += strlen(*la) + 1;
+	sprintf(gp->sbuf[0], "[%2i] %6s %s", dN, symtype, gp->sbuf[1]);
 }
 
 static void
@@ -975,6 +1107,7 @@ gpMakeColumnSelectMenu(gp_t *gp, int dN)
 {
 	read_t		*rd = gp->rd;
 	char		*la = gp->la_menu;
+
 	int		sN, cN = 0;
 
 	sprintf(gp->sbuf[0], "[%3i] ", -1);
@@ -986,37 +1119,40 @@ gpMakeColumnSelectMenu(gp_t *gp, int dN)
 
 		if (cN < rd->data[dN].column_N) {
 
-			gpInsertColumn(gp, &la, dN, cN);
+			gpMenuInsertColumn(gp, dN, cN);
+
+			strcpy(la, gp->sbuf[0]);
+			la += strlen(la) + 1;
 		}
 		else {
 			sN = cN - rd->data[dN].column_N;
 
 			sprintf(gp->sbuf[0], "[%3i] %c ", cN,
-					" TFSEPRAXHDCBLM?" [gp->pl->data[dN].sub[sN].busy]);
+					" TFSEPRAXHDIBLM?" [gp->pl->data[dN].sub[sN].busy]);
 
 			if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_TIME_MEDIAN) {
 
 				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %i, %i)",
-						gp->pl->data[dN].sub[sN].op.median.column_1,
+						gp->pl->data[dN].sub[sN].op.median.column_X,
 						gp->pl->data[dN].sub[sN].op.median.length,
 						gp->pl->data[dN].sub[sN].op.median.unwrap);
 			}
 			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_DATA_MEDIAN) {
 
 				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %i)",
-						gp->pl->data[dN].sub[sN].op.median.column_1,
-						gp->pl->data[dN].sub[sN].op.median.column_2);
+						gp->pl->data[dN].sub[sN].op.median.column_X,
+						gp->pl->data[dN].sub[sN].op.median.column_Y);
 			}
 			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_SCALE) {
 
 				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %.2E, %.2E)",
-						gp->pl->data[dN].sub[sN].op.scale.column_1,
+						gp->pl->data[dN].sub[sN].op.scale.column_X,
 						gp->pl->data[dN].sub[sN].op.scale.scale,
 						gp->pl->data[dN].sub[sN].op.scale.offset);
 			}
 			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_RESAMPLE) {
 
-				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i) (%i, %i, %i)",
+				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %i, %i, %i)",
 						gp->pl->data[dN].sub[sN].op.resample.column_X,
 						gp->pl->data[dN].sub[sN].op.resample.in_data_N,
 						gp->pl->data[dN].sub[sN].op.resample.in_column_X,
@@ -1035,14 +1171,14 @@ gpMakeColumnSelectMenu(gp_t *gp, int dN)
 					|| gp->pl->data[dN].sub[sN].busy == SUBTRACT_BINARY_HYPOTENUSE) {
 
 				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %i)",
-						gp->pl->data[dN].sub[sN].op.binary.column_1,
-						gp->pl->data[dN].sub[sN].op.binary.column_2);
+						gp->pl->data[dN].sub[sN].op.binary.column_X,
+						gp->pl->data[dN].sub[sN].op.binary.column_Y);
 			}
 			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_FILTER_DIFFERENCE
 					|| gp->pl->data[dN].sub[sN].busy == SUBTRACT_FILTER_CUMULATIVE) {
 
 				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i)",
-						gp->pl->data[dN].sub[sN].op.filter.column_1);
+						gp->pl->data[dN].sub[sN].op.filter.column_X);
 			}
 			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_FILTER_BITMASK) {
 
@@ -1052,19 +1188,19 @@ gpMakeColumnSelectMenu(gp_t *gp, int dN)
 				bf[1] = bf[1] >> 8;
 
 				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %i, %i)",
-						gp->pl->data[dN].sub[sN].op.filter.column_1,
+						gp->pl->data[dN].sub[sN].op.filter.column_X,
 						(int) bf[0], (int) bf[1]);
 			}
 			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_FILTER_LOW_PASS) {
 
 				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %.2E)",
-						gp->pl->data[dN].sub[sN].op.filter.column_1,
+						gp->pl->data[dN].sub[sN].op.filter.column_X,
 						gp->pl->data[dN].sub[sN].op.filter.gain);
 			}
 			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_FILTER_MEDIAN) {
 
 				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %i)",
-						gp->pl->data[dN].sub[sN].op.median.column_1,
+						gp->pl->data[dN].sub[sN].op.median.column_X,
 						(int) gp->pl->data[dN].sub[sN].op.median.length);
 			}
 
@@ -1082,19 +1218,22 @@ static void
 gpMakeDatasetSelectMenu(gp_t *gp)
 {
 	char		*la = gp->la_menu;
-	int		dN = 0, len, fnlen, fnlen_max;
-
-	len = gpScreenLength(gp->pl) - gp->layout_menu_dataset_margin;
-	len = (len < gp->layout_menu_dataset_minimal)
-		? gp->layout_menu_dataset_minimal : len;
-
-	fnlen_max = 0;
+	int		dN = 0, len, fspace;
 
 	do {
-		gpInsertDataset(gp, &la, dN);
+		gpMenuInsertDataset(gp, dN);
 
-		fnlen = utf8_length(gp->sbuf[0]);
-		fnlen_max = (fnlen_max < fnlen) ? fnlen : fnlen_max;
+		len = utf8_length(gp->sbuf[0]);
+
+		if (len < gp->layout_menu_dataset_minimal) {
+
+			fspace = gp->layout_menu_dataset_minimal - len;
+
+			gpTextSpaceAdd(gp->sbuf[0], fspace);
+		}
+
+		strcpy(la, gp->sbuf[0]);
+		la += strlen(la) + 1;
 
 		dN += 1;
 
@@ -1102,11 +1241,6 @@ gpMakeDatasetSelectMenu(gp_t *gp)
 			break;
 	}
 	while (1);
-
-	gpTextSepFill(gp->sbuf[1], (fnlen_max > len) ? fnlen_max : len);
-
-	strcpy(la, gp->sbuf[1]);
-	la += strlen(la) + 1;
 
 	*la = 0;
 }
@@ -1117,17 +1251,13 @@ gpMakeDatasetMenu(gp_t *gp)
 	plot_t		*pl = gp->pl;
 	read_t		*rd = gp->rd;
 	char		*la = gp->la_menu;
+
 	int		N, cN, gN, dN, len, fnlen, unwrap, opdata;
 	int		mbUSAGE, mbRAW, mbCACHE, lzPC;
 
-	len = gpScreenLength(gp->pl) - gp->layout_menu_dataset_margin;
+	len = gpFullLength(gp->pl) - gp->layout_menu_dataset_margin;
 	len = (len < gp->layout_menu_dataset_minimal)
 		? gp->layout_menu_dataset_minimal : len;
-
-	if (len < 42) {
-
-		len = 42;
-	}
 
 	dN = gp->data_N;
 
@@ -1145,11 +1275,14 @@ gpMakeDatasetMenu(gp_t *gp)
 		gp->data_N = dN;
 	}
 
-	gpInsertDataset(gp, &la, dN);
+	gpMenuInsertDataset(gp, dN);
+
+	strcpy(la, gp->sbuf[0]);
+	la += strlen(la) + 1;
 
 	fnlen = utf8_length(gp->sbuf[0]);
 
-	gpTextSepFill(gp->sbuf[1], (fnlen > len) ? fnlen : len);
+	gpTextSepFull(gp->sbuf[1], (fnlen > len) ? fnlen : len);
 
 	strcpy(la, gp->sbuf[1]);
 	la += strlen(la) + 1;
@@ -1195,11 +1328,14 @@ gpMakeDatasetMenu(gp_t *gp)
 	strcpy(la, gp->sbuf[0]);
 	la += strlen(la) + 1;
 
-	sprintf(gp->sbuf[0], gp->la->dataset_menu[2], (unwrap != 0) ? " X " : "   ");
+	sprintf(gp->sbuf[0], gp->la->dataset_menu[2],
+			(unwrap == UNWRAP_OVERFLOW) ? " X "
+			: (unwrap == UNWRAP_BURST) ? " S " : "   ");
+
 	strcpy(la, gp->sbuf[0]);
 	la += strlen(la) + 1;
 
-	sprintf(gp->sbuf[0], gp->la->dataset_menu[3], (opdata != 0) ? " X " : "   ");
+	sprintf(gp->sbuf[0], gp->la->dataset_menu[3], (opdata == 0) ? "   " : " X ");
 	strcpy(la, gp->sbuf[0]);
 	la += strlen(la) + 1;
 
@@ -1229,7 +1365,10 @@ gpMakeDatasetMenu(gp_t *gp)
 
 	while (cN < rd->data[dN].column_N) {
 
-		gpInsertColumn(gp, &la, dN, cN);
+		gpMenuInsertColumn(gp, dN, cN);
+
+		strcpy(la, gp->sbuf[0]);
+		la += strlen(la) + 1;
 
 		cN += 1;
 	}
@@ -1252,14 +1391,14 @@ gpMakeConfigurationMenu(gp_t *gp)
 		ERROR("fopen(\"%s\"): %s\n", gp->rcfile, strerror(errno));
 	}
 	else {
-		gpTextLeftCrop(gp->pl, gp->sbuf[1], gp->rcfile, gp->layout_menu_page_margin);
+		gpTextFull(gp->pl, gp->sbuf[1], gp->rcfile, gp->layout_menu_page_margin);
 
 		sprintf(gp->sbuf[0], "[%s]", gp->sbuf[1]);
 
 		strcpy(la, gp->sbuf[0]);
 		la += strlen(la) + 1;
 
-		gpTextSepFill(gp->sbuf[1], utf8_length(gp->sbuf[0]));
+		gpTextSepFull(gp->sbuf[1], utf8_length(gp->sbuf[0]));
 
 		strcpy(la, gp->sbuf[1]);
 		la += strlen(la) + 1;
@@ -1344,6 +1483,81 @@ gpWriteNewConfiguration(gp_t *gp)
 }
 
 static void
+gpMakeResampleMenu(gp_t *gp)
+{
+	plot_t		*pl = gp->pl;
+	read_t		*rd = gp->rd;
+	char		*la = gp->la_menu;
+
+	const char	*file, *symtype;
+	double		tstep;
+	int		lN, dN;
+
+	dN = gp->blank_N;
+
+	if (rd->data[dN].format == FORMAT_NONE) {
+
+		dN = gpGetBlankData(rd);
+
+		gp->blank_N = dN;
+	}
+
+	file = rd->data[dN].file;
+	file = (file[0] == '.' && file[1] == '/') ? file + 2 : file;
+
+	gpTextLeftCrop(gp->pl, gp->sbuf[0], file, gp->layout_menu_resample_crop);
+
+	symtype = gpSymDatasetFormat(gp, dN);
+
+	sprintf(gp->sbuf[1], "%i %6s %s", dN, symtype, gp->sbuf[0]);
+
+	sprintf(gp->sbuf[0], gp->la->resample_menu[0], gp->sbuf[1]);
+	strcpy(la, gp->sbuf[0]);
+	la += strlen(la) + 1;
+
+	lN = (rd->data[dN].format == FORMAT_DATA_BLANK)
+		? rd->data[dN].length_N : plotDataLength(pl, dN);
+
+	sprintf(gp->sbuf[0], gp->la->resample_menu[1], lN);
+
+	strcpy(la, gp->sbuf[0]);
+	la += strlen(la) + 1;
+
+	gpTextFloat(pl, gp->sbuf[2], gp->resample_range[0]);
+	gpTextFloat(pl, gp->sbuf[1], gp->resample_range[1]);
+
+	strcat(gp->sbuf[2], " ");
+	strcat(gp->sbuf[2], gp->sbuf[1]);
+
+	sprintf(gp->sbuf[0], gp->la->resample_menu[2], gp->sbuf[2]);
+	strcpy(la, gp->sbuf[0]);
+	la += strlen(la) + 1;
+
+	tstep = (gp->resample_range[1] - gp->resample_range[0]) / (double) (lN - 1);
+
+	gpTextFloat(pl, gp->sbuf[3], tstep);
+
+	sprintf(gp->sbuf[0], gp->la->resample_menu[3], gp->sbuf[3]);
+	strcpy(la, gp->sbuf[0]);
+	la += strlen(la) + 1;
+
+	sprintf(gp->sbuf[0], gp->la->resample_menu[4],
+			(pl->interpolation == 0) ? "NEAREST" : "LINEAR");
+
+	strcpy(la, gp->sbuf[0]);
+	la += strlen(la) + 1;
+
+	sprintf(gp->sbuf[0], gp->la->resample_menu[5], pl->defungap);
+	strcpy(la, gp->sbuf[0]);
+	la += strlen(la) + 1;
+
+	strcpy(la, gp->la->resample_menu[6]);
+	la += strlen(la) + 1;
+
+	*la = 0;
+}
+
+static void
 gpMakeAboutMenu(gp_t *gp)
 {
 	char		*la = gp->la_menu;
@@ -1351,7 +1565,7 @@ gpMakeAboutMenu(gp_t *gp)
 	strcpy(la, "Graph Plotter is a tool to analyse numerical data");
 	la += strlen(la) + 1;
 
-	gpTextSepFill(gp->sbuf[0], 54);
+	gpTextSepFull(gp->sbuf[0], 54);
 
 	strcpy(la, gp->sbuf[0]);
 	la += strlen(la) + 1;
@@ -1374,7 +1588,7 @@ gpMakeAboutMenu(gp_t *gp)
 			SDL_IMAGE_MINOR_VERSION, SDL_IMAGE_PATCHLEVEL);
 	la += strlen(la) + 1;
 
-	gpTextSepFill(gp->sbuf[0], 54);
+	gpTextSepFull(gp->sbuf[0], 54);
 
 	strcpy(la, gp->sbuf[0]);
 	la += strlen(la) + 1;
@@ -1486,6 +1700,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 	menu_t		*mu = gp->mu;
 	edit_t		*ed = gp->ed;
 
+	double		fmin, fmax;
 	int		N, nAX, nAY;
 
 	if (menu_N == 1) {
@@ -1674,6 +1889,9 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				if (pl->slice_on == 0) {
 
 					pl->slice_on = 1;
+					pl->slice_mode_N = 0;
+					pl->pick_on = 0;
+
 					pl->slice_axis_N = pl->hover_axis;
 
 					plotSliceTrack(pl, gp->cur_X, gp->cur_Y);
@@ -1683,30 +1901,25 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 					pl->slice_on = 0;
 					pl->slice_mode_N = 0;
+					pl->pick_on = 0;
 				}
 				break;
 
 			case 12:
-				if (pl->axis[PLOT_AXES_MAX - 1].compact != 0) {
+				if (pl->pick_on == 0) {
 
-					for (N = 0; N < PLOT_AXES_MAX; ++N)
-						pl->axis[N].compact = 0;
+					pl->slice_on = 0;
+					pl->slice_mode_N = 0;
+					pl->pick_on = 1;
+
+					plotPickTrack(pl, gp->cur_X, gp->cur_Y);
 				}
 				else {
-					for (N = 0; N < PLOT_AXES_MAX; ++N)
-						pl->axis[N].compact = 1;
-				}
-				break;
+					pl->data_box_on = DATA_BOX_FREE;
 
-			case 13:
-				if (pl->axis[0].exponential != 0) {
-
-					for (N = 0; N < PLOT_AXES_MAX; ++N)
-						pl->axis[N].exponential = 0;
-				}
-				else {
-					for (N = 0; N < PLOT_AXES_MAX; ++N)
-						pl->axis[N].exponential = 1;
+					pl->slice_on = 0;
+					pl->slice_mode_N = 0;
+					pl->pick_on = 0;
 				}
 				break;
 
@@ -1771,7 +1984,8 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 1:
-				plotDataSubtractAlternate(rd->pl);
+				plotDataSubtractAlternate(pl);
+				plotTotalSubtractGarbage(pl);
 				break;
 
 			case 2:
@@ -1787,6 +2001,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				gpMakeDatasetMenu(gp);
 
 				menuRaise(mu, 1022, gp->la_menu, mu->box_X, mu->box_Y);
+
 				gp->stat = GP_MENU;
 				break;
 
@@ -1837,7 +2052,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 		if (item_N != -1) {
 
-			int			gN, cN;
+			int			gN, cN, unwrap;
 
 			switch (item_N) {
 
@@ -1902,8 +2117,10 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 						if (gN >= 0) {
 
-							pl->group[gN].op_time_unwrap =
-								(pl->group[gN].op_time_unwrap != 0) ? 0 : 1;
+							unwrap = pl->group[gN].op_time_unwrap;
+							unwrap = (unwrap < UNWRAP_BURST) ? unwrap + 1 : 0;
+
+							pl->group[gN].op_time_unwrap = unwrap;
 						}
 					}
 
@@ -2252,8 +2469,6 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 				if (mu->clicked != 0) {
 
-					mu->mark[0].subs = (pl->axis[gp->ax_N].compact == 0) ? " " : "X";
-
 					menuResume(mu);
 					gp->stat = GP_MENU;
 				}
@@ -2263,8 +2478,6 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				pl->axis[gp->ax_N].exponential = pl->axis[gp->ax_N].exponential ? 0 : 1;
 
 				if (mu->clicked != 0) {
-
-					mu->mark[1].subs = (pl->axis[gp->ax_N].exponential == 0) ? " " : "X";
 
 					menuResume(mu);
 					gp->stat = GP_MENU;
@@ -2280,8 +2493,6 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				}
 
 				if (mu->clicked != 0) {
-
-					mu->mark[2].subs = (pl->axis[gp->ax_N].lock_tick == 0) ? " " : "X";
 
 					menuResume(mu);
 					gp->stat = GP_MENU;
@@ -2377,20 +2588,12 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 				N = plotFigureSelected(pl);
 
-				if (N < 2) {
+				if (N != 2) {
 
-					mu->hidden_N[0] = 2;
+					mu->hidden_N[0] = 5;
 					mu->hidden_N[1] = 6;
 					mu->hidden_N[2] = 7;
 					mu->hidden_N[3] = 8;
-					mu->hidden_N[4] = 9;
-				}
-				else if (N != 2) {
-
-					mu->hidden_N[0] = 6;
-					mu->hidden_N[1] = 7;
-					mu->hidden_N[2] = 8;
-					mu->hidden_N[3] = 9;
 				}
 
 				gp->stat = GP_MENU;
@@ -2412,7 +2615,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 	}
 	else if (menu_N == 302) {
 
-		int		config[3];
+		int		length, unwrap, opdata;
 
 		switch (item_N) {
 
@@ -2422,7 +2625,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				if (N < 0) {
 
 					ERROR("Unable to get free figure to duplicate\n");
-					break ;
+					break;
 				}
 
 				plotFigureAdd(pl, N, pl->figure[gp->fig_N].data_N,
@@ -2438,9 +2641,9 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 1:
-				if (plotFigureSubtractGetMedianConfig(pl, gp->fig_N, config) >= 0) {
+				if (plotFigureSubtractGetMedianConfig(pl, gp->fig_N, &length, &unwrap, &opdata) >= 0) {
 
-					sprintf(gp->sbuf[0], "%d %d %d", config[0], config[1], config[2]);
+					sprintf(gp->sbuf[0], "%d %d %d", length, unwrap, opdata);
 				}
 				else {
 					sprintf(gp->sbuf[0], "15 0 1");
@@ -2453,24 +2656,20 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 2:
-				plotFigureSubtractResample(pl, gp->fig_N);
-				break;
-
-			case 3:
 				editRaise(ed, 5, gp->la->scale_offset_edit,
 						"1 0", mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
 
-			case 4:
+			case 3:
 				editRaise(ed, 6, gp->la->scale_offset_edit,
 						"-1 0", mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
 
-			case 5:
+			case 4:
 				if (plotDataBoxPolyfit(pl, gp->fig_N) == 0) {
 
 					editRaise(ed, 16, gp->la->polynomial_edit,
@@ -2480,45 +2679,45 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				}
 				break;
 
-			case 6:
+			case 5:
 				plotFigureSubtractSwitch(pl, SUBTRACT_BINARY_SUBTRACTION);
 				break;
 
-			case 7:
+			case 6:
 				plotFigureSubtractSwitch(pl, SUBTRACT_BINARY_ADDITION);
 				break;
 
-			case 8:
+			case 7:
 				plotFigureSubtractSwitch(pl, SUBTRACT_BINARY_MULTIPLICATION);
 				break;
 
-			case 9:
+			case 8:
 				plotFigureSubtractSwitch(pl, SUBTRACT_BINARY_HYPOTENUSE);
 				break;
 
-			case 10:
+			case 9:
 				plotFigureSubtractFilter(pl, gp->fig_N, SUBTRACT_FILTER_DIFFERENCE, 0.);
 				break;
 
-			case 11:
+			case 10:
 				plotFigureSubtractFilter(pl, gp->fig_N, SUBTRACT_FILTER_CUMULATIVE, 0.);
 				break;
 
-			case 12:
+			case 11:
 				editRaise(ed, 8, gp->la->bit_number_edit,
 						"0", mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
 
-			case 13:
+			case 12:
 				editRaise(ed, 13, gp->la->low_pass_edit,
 						"0.1", mu->box_X, mu->box_Y);
 
 				gp->stat = GP_EDIT;
 				break;
 
-			case 14:
+			case 13:
 				editRaise(ed, 19, gp->la->median_unwrap_edit,
 						"15", mu->box_X, mu->box_Y);
 
@@ -2640,6 +2839,19 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 1:
+				if (plotAxisRangeGet(pl, pl->on_X, &fmin, &fmax) != 0) {
+
+					gp->resample_range[0] = fmin;
+					gp->resample_range[1] = fmax;
+
+					gpMakeResampleMenu(gp);
+
+					menuRaise(mu, 402, gp->la_menu, mu->box_X, mu->box_Y);
+					gp->stat = GP_MENU;
+				}
+				break;
+
+			case 2:
 				gp->fig_N = -1;
 
 				editRaise(ed, 5, gp->la->scale_offset_edit,
@@ -2648,7 +2860,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				gp->stat = GP_EDIT;
 				break;
 
-			case 2:
+			case 3:
 				gp->fig_N = -1;
 
 				editRaise(ed, 6, gp->la->scale_offset_edit,
@@ -2657,7 +2869,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				gp->stat = GP_EDIT;
 				break;
 
-			case 3:
+			case 4:
 				sprintf(gp->sbuf[0], "%s/g%if%i.csv", rd->screenpath,
 						rd->page_N, gp->pl->legend_N);
 
@@ -2683,7 +2895,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				gp->stat = GP_EDIT;
 				break;
 
-			case 4:
+			case 5:
 				pl->transparency = pl->transparency ? 0 : 1;
 
 				if (mu->clicked != 0) {
@@ -2695,7 +2907,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				}
 				break;
 
-			case 5:
+			case 6:
 				pl->legend_hidden = pl->legend_hidden ? 0 : 1;
 
 				if (mu->clicked != 0) {
@@ -2732,19 +2944,120 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 			}
 		}
 	}
+	else if (menu_N == 402) {
+
+		switch (item_N) {
+
+			case 0:
+				gpMakeDatasetSelectMenu(gp);
+
+				menuRaise(mu, 4021, gp->la_menu, mu->box_X, mu->box_Y);
+
+				gp->stat = GP_MENU;
+				break;
+
+			case 1:
+				N = (rd->data[gp->blank_N].format == FORMAT_DATA_BLANK)
+					? rd->data[gp->blank_N].length_N
+					: plotDataLength(pl, gp->blank_N);
+
+				sprintf(gp->sbuf[0], "%i", N);
+
+				editRaise(ed, 24, gp->la->length_edit,
+						gp->sbuf[0], mu->box_X, mu->box_Y);
+
+				gp->stat = GP_EDIT;
+				break;
+
+			case 2:
+				editRaise(ed, 22, gp->la->time_range_edit,
+						gp->sbuf[2], mu->box_X, mu->box_Y);
+
+				gp->stat = GP_EDIT;
+				break;
+
+			case 3:
+				editRaise(ed, 25, gp->la->time_step_edit,
+						gp->sbuf[3], mu->box_X, mu->box_Y);
+
+				gp->stat = GP_EDIT;
+				break;
+
+			case 4:
+				pl->interpolation = (pl->interpolation == 0) ? 1 : 0;
+
+				gpMakeResampleMenu(gp);
+
+				menuResume(mu);
+				menuLayout(mu);
+
+				gp->stat = GP_MENU;
+				break;
+
+			case 5:
+				sprintf(gp->sbuf[0], "%i", pl->defungap);
+
+				editRaise(ed, 26, gp->la->time_threshold_edit,
+						gp->sbuf[0], mu->box_X, mu->box_Y);
+
+				gp->stat = GP_EDIT;
+				break;
+
+			case 6:
+				plotTotalSubtractResample(pl, gp->blank_N,
+						gp->resample_range[0],
+						gp->resample_range[1]);
+				break;
+		}
+	}
+	else if (menu_N == 4021) {
+
+		if (item_N != -1) {
+
+			if (		item_N < PLOT_DATASET_MAX
+					&& item_N >= 0) {
+
+				gp->blank_N = item_N;
+			}
+
+			gpMakeResampleMenu(gp);
+
+			menuRaise(mu, 402, gp->la_menu, mu->box_X, mu->box_Y);
+			gp->stat = GP_MENU;
+		}
+	}
 	else if (menu_N == 5) {
 
 		switch (item_N) {
 
 			case 0:
+				plotDataBoxCopyClipboard(pl);
+				break;
+
+			case 1:
+				sprintf(gp->sbuf[0], "%i", pl->fprecision);
+
+				editRaise(ed, 23, gp->la->precision_edit,
+						gp->sbuf[0], mu->box_X, mu->box_Y);
+
+				gp->stat = GP_EDIT;
+				break;
+
+			case 2:
+				pl->fhexadecimal = pl->fhexadecimal ? 0 : 1;
+
+				mu->mark[1].subs = (pl->fhexadecimal == 0) ? " ": "X";
+
+				menuResume(mu);
+				gp->stat = GP_MENU;
+				break;
+
+			case 3:
 				pl->data_box_on = DATA_BOX_FREE;
 
 				pl->slice_on = 0;
 				pl->slice_mode_N = 0;
-				break;
-
-			case 1:
-				plotDataBoxCopyClipboard(pl);
+				pl->pick_on = 0;
 				break;
 		}
 	}
@@ -2834,7 +3147,7 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 		if (n != 0) {
 
-			if (n == 1) {
+			if (n < 2) {
 
 				offset = 0.;
 			}
@@ -2950,7 +3263,7 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%le %le", &scale, &offset);
 
-		if (n == 2) {
+		if (n >= 2) {
 
 			plotGroupScale(pl, gp->grp_N, 1, scale, offset);
 		}
@@ -2967,7 +3280,7 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%d", &len);
 
-		if (n == 1) {
+		if (n != 0) {
 
 			if (len >= 0) {
 
@@ -2989,7 +3302,7 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%le", &gain);
 
-		if (n == 1) {
+		if (n != 0) {
 
 			plotFigureSubtractFilter(pl, gp->fig_N,
 					SUBTRACT_FILTER_LOW_PASS, gain);
@@ -2999,7 +3312,7 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%i", &len);
 
-		if (n == 1) {
+		if (n != 0) {
 
 			if (len >= 0 && len <= 16) {
 
@@ -3011,7 +3324,7 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%d", &len);
 
-		if (n == 1) {
+		if (n != 0) {
 
 			gpFontToggle(gp, 0, len);
 
@@ -3083,7 +3396,7 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 		if (n != 0) {
 
-			if (len >= 0 && len <= PLOT_MEDIAN_MAX) {
+			if (len >= 1 && len <= PLOT_MEDIAN_MAX) {
 
 				plotFigureSubtractTimeMedian(pl, gp->fig_N,
 						len, args[0], args[1]);
@@ -3109,18 +3422,18 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%d %d", &args[0], &args[1]);
 
-		if (n == 2) {
+		if (n >= 2) {
 
 			if (args[0] > 0 && args[0] < 100) {
 
 				pl->mark_density = args[0];
-				pl->mark_count = 0;
+				pl->mark_length = 0;
 			}
 
 			if (args[1] > 0 && args[1] < 100) {
 
 				pl->mark_size = args[1];
-				pl->mark_count = 0;
+				pl->mark_length = 0;
 			}
 
 			sprintf(gp->sbuf[2] + 20, "%2i %2i  ", pl->mark_density, pl->mark_size);
@@ -3154,6 +3467,93 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 		menuResume(mu);
 		menuLayout(mu);
 
+		gp->stat = GP_MENU;
+	}
+	else if (edit_N == 22) {
+
+		double		fmin, fmax;
+
+		n = sscanf(text, "%le %le", &fmin, &fmax);
+
+		if (n >= 2) {
+
+			gp->resample_range[0] = fmin;
+			gp->resample_range[1] = fmax;
+		}
+
+		gpMakeResampleMenu(gp);
+
+		menuRaise(mu, 402, gp->la_menu, mu->box_X, mu->box_Y);
+		gp->stat = GP_MENU;
+	}
+	else if (edit_N == 23) {
+
+		n = sscanf(text, "%d", &len);
+
+		if (n != 0) {
+
+			if (len >= 1 && len <= 16) {
+
+				pl->fprecision = len;
+			}
+		}
+
+		sprintf(gp->sbuf[2], "%1i", pl->fprecision);
+
+		mu->mark[0].subs = gp->sbuf[2];
+
+		menuResume(mu);
+		gp->stat = GP_MENU;
+	}
+	else if (edit_N == 24) {
+
+		n = sscanf(text, "%d", &len);
+
+		if (n != 0) {
+
+			if (len > 0) {
+
+				gpMakeBlank(gp, len);
+			}
+		}
+
+		gpMakeResampleMenu(gp);
+
+		menuRaise(mu, 402, gp->la_menu, mu->box_X, mu->box_Y);
+		gp->stat = GP_MENU;
+	}
+	else if (edit_N == 25) {
+
+		n = sscanf(text, "%le", &offset);
+
+		if (n != 0) {
+
+			len = (int) ((gp->resample_range[1]
+					- gp->resample_range[0]) / offset + 1);
+
+			gpMakeBlank(gp, len);
+		}
+
+		gpMakeResampleMenu(gp);
+
+		menuRaise(mu, 402, gp->la_menu, mu->box_X, mu->box_Y);
+		gp->stat = GP_MENU;
+	}
+	else if (edit_N == 26) {
+
+		n = sscanf(text, "%d", &len);
+
+		if (n == 1) {
+
+			if (len >= 0) {
+
+				pl->defungap = len;
+			}
+		}
+
+		gpMakeResampleMenu(gp);
+
+		menuRaise(mu, 402, gp->la_menu, mu->box_X, mu->box_Y);
 		gp->stat = GP_MENU;
 	}
 }
@@ -3374,29 +3774,7 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 			}
 			else if (ev->key.keysym.sym == SDLK_k) {
 
-				if (pl->hover_axis != -1) {
-
-					mu->clicked = 0;
-					gp->ax_N = pl->hover_axis;
-
-					gpMenuHandle(gp, 2, 4);
-				}
-				else {
-					gpMenuHandle(gp, 1, 12);
-				}
-			}
-			else if (ev->key.keysym.sym == SDLK_e) {
-
-				if (pl->hover_axis != -1) {
-
-					mu->clicked = 0;
-					gp->ax_N = pl->hover_axis;
-
-					gpMenuHandle(gp, 2, 5);
-				}
-				else {
-					gpMenuHandle(gp, 1, 13);
-				}
+				gpMenuHandle(gp, 1, 12);
 			}
 			else if (ev->key.keysym.sym == SDLK_y) {
 
@@ -3416,7 +3794,6 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 					if (N >= 0) {
 
 						pl->figure[N].hidden = pl->figure[N].hidden ? 0 : 1;
-
 						break;
 					}
 
@@ -3448,33 +3825,30 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 
 					if (N >= 0) {
 
-						if (pl->axis[N].busy == AXIS_BUSY_X
+						if (		pl->axis[N].busy == AXIS_BUSY_X
 								&& pl->axis[N].slave == 0) {
 
 							pl->on_X = N;
 							gp->ax_N = N;
 
 							gp->stat = GP_MOVING;
-							break;
 						}
-						else if (pl->axis[N].busy == AXIS_BUSY_Y
+						else if (	pl->axis[N].busy == AXIS_BUSY_Y
 								&& pl->axis[N].slave == 0) {
 
 							pl->on_Y = N;
 							gp->ax_N = N;
 
 							gp->stat = GP_MOVING;
-							break;
 						}
-					}
-					else {
-						gp->box_X = ev->button.x;
-						gp->box_Y = ev->button.y;
-						gp->ax_N = -1;
-
-						gp->stat = GP_MOVING;
 						break;
 					}
+
+					gp->box_X = ev->button.x;
+					gp->box_Y = ev->button.y;
+					gp->ax_N = -1;
+
+					gp->stat = GP_MOVING;
 				}
 				while (0);
 			}
@@ -3496,8 +3870,9 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 							mu->hidden_N[0] = 9;
 						}
 
+						mu->hidden_N[1] = 13;
 #ifndef _WINDOWS
-						mu->hidden_N[1] = 14;
+						mu->hidden_N[2] = 14;
 #endif /* _WINDOWS */
 
 						gp->stat = GP_MENU;
@@ -3524,10 +3899,10 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 						menuRaise(mu, 4, gp->la->legend_menu,
 								gp->cur_X, gp->cur_Y);
 
-						mu->mark[0].N = 4;
+						mu->mark[0].N = 5;
 						mu->mark[0].subs = (pl->transparency == 0) ? " " : "X";
 
-						mu->mark[1].N = 5;
+						mu->mark[1].N = 6;
 						mu->mark[1].subs = (pl->legend_hidden == 0) ? " " : "X";
 
 						gp->stat = GP_MENU;
@@ -3540,6 +3915,14 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 
 						menuRaise(mu, 5, gp->la->databox_menu,
 								gp->cur_X, gp->cur_Y);
+
+						sprintf(gp->sbuf[2], "%1i", pl->fprecision);
+
+						mu->mark[0].N = 1;
+						mu->mark[0].subs = gp->sbuf[2];
+
+						mu->mark[1].N = 2;
+						mu->mark[1].subs = (pl->fhexadecimal == 0) ? " ": "X";
 
 						gp->stat = GP_MENU;
 						break;
@@ -3564,7 +3947,6 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 							mu->mark[2].subs = (pl->axis[N].lock_tick == 0) ? " " : "X";
 
 							gp->stat = GP_MENU;
-							break;
 						}
 						else {
 							gp->ax_N = N;
@@ -3583,19 +3965,16 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 							mu->mark[2].subs = (pl->axis[N].lock_tick == 0) ? " " : "X";
 
 							gp->stat = GP_MENU;
-							break;
-						}
-					}
-					else {
-						if (clipBoxTest(&pl->viewport, gp->cur_X, gp->cur_Y)) {
-
-							gp->box_X = ev->button.x;
-							gp->box_Y = ev->button.y;
-
-							gp->stat = GP_BOX_SELECT;
-							break;
 						}
 						break;
+					}
+
+					if (clipBoxTest(&pl->viewport, gp->cur_X, gp->cur_Y)) {
+
+						gp->box_X = ev->button.x;
+						gp->box_Y = ev->button.y;
+
+						gp->stat = GP_BOX_SELECT;
 					}
 				}
 				while (0);
@@ -3645,6 +4024,10 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 
 				plotSliceTrack(pl, gp->cur_X, gp->cur_Y);
 			}
+			else if (pl->pick_on != 0) {
+
+				plotPickTrack(pl, gp->cur_X, gp->cur_Y);
+			}
 
 			if (pl->data_box_on != DATA_BOX_FREE) {
 
@@ -3678,12 +4061,16 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 				if (gp->box_X == ev->button.x && gp->box_Y == ev->button.y
 						&& clipBoxTest(&pl->viewport, gp->box_X, gp->box_Y)) {
 
-					if (pl->slice_on == 0) {
+					if (pl->slice_on != 0) {
 
-						gp->stat = GP_RANGE_SELECT;
+						plotSliceSwitch(pl);
+					}
+					else if (pl->pick_on != 0) {
+
+						plotSliceSwitch(pl);
 					}
 					else {
-						plotSliceSwitch(pl);
+						gp->stat = GP_RANGE_SELECT;
 					}
 				}
 			}
@@ -3824,8 +4211,22 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 
 		if (ev->type == SDL_KEYDOWN) {
 
-			if (ev->key.keysym.sym == SDLK_ESCAPE)
+			if (ev->key.keysym.sym == SDLK_ESCAPE) {
+
 				gp->stat = GP_IDLE;
+			}
+			else if (ev->key.keysym.sym == SDLK_e) {
+
+				pl->brush_on = (pl->brush_on == 0) ? 1 : 0;
+
+				if (pl->brush_on != 0) {
+
+					pl->brush_box_X = gp->box_X;
+					pl->brush_box_Y = gp->box_Y;
+					pl->brush_cur_X = gp->cur_X;
+					pl->brush_cur_Y = gp->cur_Y;
+				}
+			}
 		}
 		else if (ev->type == SDL_MOUSEBUTTONDOWN) {
 
@@ -3836,34 +4237,48 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 
 			if (ev->button.button == SDL_BUTTON_RIGHT) {
 
-				if (gp->box_X != gp->cur_X && gp->box_Y != gp->cur_Y) {
+				if (		   gp->box_X != gp->cur_X
+						&& gp->box_Y != gp->cur_Y) {
 
-					if (gp->box_X > gp->cur_X) {
+					if (pl->brush_on != 0) {
 
-						N = gp->box_X;
-						gp->box_X = gp->cur_X;
-						gp->cur_X = N;
+						pl->brush_box_X = gp->box_X;
+						pl->brush_box_Y = gp->box_Y;
+						pl->brush_cur_X = gp->cur_X;
+						pl->brush_cur_Y = gp->cur_Y;
+
+						plotBrushErase(pl);
+
+						pl->brush_on = 0;
 					}
+					else {
+						if (gp->box_X > gp->cur_X) {
 
-					if (gp->box_Y < gp->cur_Y) {
+							N = gp->box_X;
+							gp->box_X = gp->cur_X;
+							gp->cur_X = N;
+						}
 
-						N = gp->box_Y;
-						gp->box_Y = gp->cur_Y;
-						gp->cur_Y = N;
+						if (gp->box_Y < gp->cur_Y) {
+
+							N = gp->box_Y;
+							gp->box_Y = gp->cur_Y;
+							gp->cur_Y = N;
+						}
+
+						fmin = plotAxisConvBackward(pl, pl->on_X, gp->box_X);
+						fmax = plotAxisConvBackward(pl, pl->on_X, gp->cur_X);
+
+						plotAxisScaleManual(pl, pl->on_X, fmin, fmax);
+
+						fmin = plotAxisConvBackward(pl, pl->on_Y, gp->box_Y);
+						fmax = plotAxisConvBackward(pl, pl->on_Y, gp->cur_Y);
+
+						plotAxisScaleManual(pl, pl->on_Y, fmin, fmax);
+
+						pl->axis[pl->on_X].lock_scale = LOCK_FREE;
+						pl->axis[pl->on_Y].lock_scale = LOCK_FREE;
 					}
-
-					fmin = plotAxisConvBackward(pl, pl->on_X, gp->box_X);
-					fmax = plotAxisConvBackward(pl, pl->on_X, gp->cur_X);
-
-					plotAxisScaleManual(pl, pl->on_X, fmin, fmax);
-
-					fmin = plotAxisConvBackward(pl, pl->on_Y, gp->box_Y);
-					fmax = plotAxisConvBackward(pl, pl->on_Y, gp->cur_Y);
-
-					plotAxisScaleManual(pl, pl->on_Y, fmin, fmax);
-
-					pl->axis[pl->on_X].lock_scale = LOCK_FREE;
-					pl->axis[pl->on_Y].lock_scale = LOCK_FREE;
 				}
 				else {
 					gpMenuHandle(gp, 101, 0);
@@ -3876,11 +4291,26 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 
 			gp->cur_X = ev->motion.x;
 			gp->cur_Y = ev->motion.y;
+
+			if (pl->brush_on != 0) {
+
+				pl->brush_cur_X = gp->cur_X;
+				pl->brush_cur_Y = gp->cur_Y;
+			}
 		}
 	}
 	else if (gp->stat == GP_MENU) {
 
 		SDL_StartTextInput();
+
+		if (mu->id == 2) {
+
+			N = gp->ax_N;
+
+			mu->mark[0].subs = (pl->axis[N].compact == 0) ? " " : "X";
+			mu->mark[1].subs = (pl->axis[N].exponential == 0) ? " " : "X";
+			mu->mark[2].subs = (pl->axis[N].lock_tick == 0) ? " " : "X";
+		}
 
 		if (ev->type == SDL_KEYDOWN) {
 
@@ -4530,7 +4960,7 @@ int gp_Draw(gp_t *gp)
 					pl->sch->plot_hovered);
 		}
 
-		gpTextLeftCrop(pl, gp->sbuf[1], rd->page[rd->page_N].title,
+		gpTextFull(pl, gp->sbuf[1], rd->page[rd->page_N].title,
 				gp->layout_menu_page_margin);
 
 		sprintf(gp->sbuf[0], "%3d %s", rd->page_N, gp->sbuf[1]);
