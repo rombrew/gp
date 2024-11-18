@@ -236,7 +236,7 @@ readCutLabel(char *tbuf, const char *text, int allowed)
 {
 	int		length;
 
-	length = strlen(text);
+	length = (int) strlen(text);
 
 	if (length > (allowed - 1)) {
 
@@ -489,8 +489,8 @@ void legacy_ConfigGRM(read_t *rd, const char *path, const char *confile,
 		return ;
 	}
 	else {
-		len = fread(&stub, 2, 1, fd);
-		len += fread(&fpN, 4, 1, fd);
+		len = (int) fread(&stub, 2, 1, fd);
+		len += (int) fread(&fpN, 4, 1, fd);
 
 		cN = (int) fpN;
 
@@ -503,7 +503,7 @@ void legacy_ConfigGRM(read_t *rd, const char *path, const char *confile,
 		}
 		else {
 			fseek(fd, 0UL, SEEK_SET);
-			len = fread(&fpN, 4, 1, fd);
+			len = (int) fread(&fpN, 4, 1, fd);
 
 			cN = (int) fpN;
 
@@ -989,12 +989,12 @@ readTEXTGetLabel(read_t *rd, int dN)
 }
 
 static int
-readTEXTGetBOM(read_t *rd, FILE *fd)
+readTEXTGetBOM(FILE *fd)
 {
 	char		tbuf[8];
 	int		len, bom = BOM_NONE;
 
-	len = fread(tbuf, 4, 1, fd);
+	len = (int) fread(tbuf, 4, 1, fd);
 
 	fseek(fd, 0UL, SEEK_SET);
 
@@ -1142,7 +1142,7 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 
 			if (fmt != FORMAT_PLAIN_STDIN) {
 
-				bom = readTEXTGetBOM(rd, fd);
+				bom = readTEXTGetBOM(fd);
 
 				if (bom == BOM_UTF_UNKNOWN) {
 
@@ -1175,26 +1175,26 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 		}
 		else if (fmt == FORMAT_BINARY_FLOAT) {
 
-			lN = (lN < 1) ? bF / (cN * sizeof(float)) : lN;
+			lN = (lN < 1) ? (int) (bF / (cN * sizeof(float))) : lN;
 			rd->data[dN].line_N = 1;
 		}
 		else if (fmt == FORMAT_BINARY_DOUBLE) {
 
-			lN = (lN < 1) ? bF / (cN * sizeof(double)) : lN;
+			lN = (lN < 1) ? (int) (bF / (cN * sizeof(double))) : lN;
 			rd->data[dN].line_N = 1;
 		}
 
 #ifdef _LEGACY
 		else if (fmt == FORMAT_BINARY_LEGACY_V1) {
 
-			lN = (lN < 1) ? (bF - 6) / (cN * 6) : lN;
+			lN = (lN < 1) ? (int) ((bF - 6) / (cN * 6)) : lN;
 			rd->data[dN].line_N = 1;
 
 			fseek(fd, 6UL, SEEK_SET);
 		}
 		else if (fmt == FORMAT_BINARY_LEGACY_V2) {
 
-			lN = (lN < 1) ? (bF - 4) / (cN * 4) : lN;
+			lN = (lN < 1) ? (int) ((bF - 4) / (cN * 4)) : lN;
 			rd->data[dN].line_N = 1;
 
 			fseek(fd, 4UL, SEEK_SET);
@@ -1401,7 +1401,7 @@ int readUpdate(read_t *rd)
 
 			file_N += 1;
 
-			tTOP = SDL_GetTicks() + 20;
+			tTOP = (int) SDL_GetTicks() + 20;
 
 			do {
 				if (		rd->data[dN].format == FORMAT_PLAIN_STDIN
@@ -1458,7 +1458,7 @@ int readUpdate(read_t *rd)
 					plotDataGrowUp(rd->pl, dN);
 				}
 			}
-			while (SDL_GetTicks() < tTOP);
+			while ((int) SDL_GetTicks() < tTOP);
 
 			plotDataSubtractResidual(rd->pl, dN);
 		}
@@ -1805,7 +1805,7 @@ configParseFSM(read_t *rd, parse_t *pa)
 					if (r == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
 					else break;
 
-					if (argi[0] > sizeof(rd->data[0].buf)) {
+					if (argi[0] > (int) sizeof(rd->data[0].buf)) {
 
 						failed = 0;
 						rd->preload = argi[0];
@@ -3298,7 +3298,7 @@ void readConfigGP(read_t *rd, const char *file, int fromUI)
 		ERROR("fopen(\"%s\"): %s\n", file, strerror(errno));
 	}
 	else {
-		if (readTEXTGetBOM(rd, fd) == BOM_UTF_UNKNOWN) {
+		if (readTEXTGetBOM(fd) == BOM_UTF_UNKNOWN) {
 
 			ERROR("Unsupported BOM in file \"%s\"\n", file);
 
@@ -3774,7 +3774,7 @@ readScaleDataMap(plot_t *pl, int dN, int cNT, int cN, subtract_t *sb)
 		else if (sb[N].busy == SUBTRACT_FILTER_MEDIAN) {
 
 			cMAP = plotGetSubtractMedian(pl, dN, cN,
-					sb[N].busy, sb[N].args[0]);
+					sb[N].busy, (int) sb[N].args[0]);
 
 			if (cMAP != -1) {
 

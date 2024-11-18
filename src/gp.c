@@ -74,7 +74,7 @@ struct gp_struct {
 	SDL_Surface	*fb;
 	SDL_Surface	*surface;
 
-	int		window_ID;
+	Uint32		window_ID;
 
 	char		sbuf[4][READ_FILE_PATH_MAX];
 
@@ -226,7 +226,7 @@ gpMakeHello(gp_t *gp)
 static int
 gpGetBlankData(read_t *rd)
 {
-	int		N, dN_MAX, dN = 0;
+	int		N, dN_MAX = 0, dN = 0;
 
 	for (N = 0; N < PLOT_DATASET_MAX; ++N) {
 
@@ -474,7 +474,7 @@ gpFullLength(plot_t *pl)
 }
 
 static void
-gpTextLeftCrop(plot_t *pl, char *sbuf, const char *text, int allowed)
+gpTextLeftCrop(char *sbuf, const char *text, int allowed)
 {
 	int		length;
 
@@ -495,7 +495,7 @@ gpTextLeftCrop(plot_t *pl, char *sbuf, const char *text, int allowed)
 static void
 gpTextFull(plot_t *pl, char *sbuf, const char *text, int margin)
 {
-	gpTextLeftCrop(pl, sbuf, text, gpFullLength(pl) - margin);
+	gpTextLeftCrop(sbuf, text, gpFullLength(pl) - margin);
 }
 
 static void
@@ -666,7 +666,7 @@ gpMakePageMenu(gp_t *gp)
 }
 
 static int
-gpFileIsGP(gp_t *gp, const char *file)
+gpFileIsGP(const char *file)
 {
 	int		rc = 0;
 
@@ -682,7 +682,7 @@ gpFileIsGP(gp_t *gp, const char *file)
 
 #ifdef _LEGACY
 static int
-legacy_FileIsBAT(gp_t *gp, const char *file)
+legacy_FileIsBAT(const char *file)
 {
 	int		rc = 0;
 
@@ -778,13 +778,13 @@ gpUnifiedFileOpen(gp_t *gp, const char *file, int fromUI)
 {
 	read_t		*rd = gp->rd;
 
-	if (gpFileIsGP(gp, file) != 0) {
+	if (gpFileIsGP(file) != 0) {
 
 		readConfigGP(rd, file, fromUI);
 	}
 
 #ifdef _LEGACY
-	else if (legacy_FileIsBAT(gp, file) != 0) {
+	else if (legacy_FileIsBAT(file) != 0) {
 
 		legacy_FileOpenBAT(gp, file, fromUI);
 	}
@@ -1177,8 +1177,9 @@ gpMakeColumnSelectMenu(gp_t *gp, int dN)
 			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_FILTER_DIFFERENCE
 					|| gp->pl->data[dN].sub[sN].busy == SUBTRACT_FILTER_CUMULATIVE) {
 
-				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i)",
-						gp->pl->data[dN].sub[sN].op.filter.column_X);
+				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %i)",
+						gp->pl->data[dN].sub[sN].op.filter.column_X,
+						gp->pl->data[dN].sub[sN].op.filter.column_Y);
 			}
 			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_FILTER_BITMASK) {
 
@@ -1188,19 +1189,19 @@ gpMakeColumnSelectMenu(gp_t *gp, int dN)
 				bf[1] = bf[1] >> 8;
 
 				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %i, %i)",
-						gp->pl->data[dN].sub[sN].op.filter.column_X,
+						gp->pl->data[dN].sub[sN].op.filter.column_Y,
 						(int) bf[0], (int) bf[1]);
 			}
 			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_FILTER_LOW_PASS) {
 
 				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %.2E)",
-						gp->pl->data[dN].sub[sN].op.filter.column_X,
+						gp->pl->data[dN].sub[sN].op.filter.column_Y,
 						gp->pl->data[dN].sub[sN].op.filter.gain);
 			}
 			else if (gp->pl->data[dN].sub[sN].busy == SUBTRACT_FILTER_MEDIAN) {
 
 				sprintf(gp->sbuf[0] + strlen(gp->sbuf[0]), "(%i, %i)",
-						gp->pl->data[dN].sub[sN].op.median.column_X,
+						gp->pl->data[dN].sub[sN].op.median.column_Y,
 						(int) gp->pl->data[dN].sub[sN].op.median.length);
 			}
 
@@ -1343,9 +1344,9 @@ gpMakeDatasetMenu(gp_t *gp)
 	strcpy(la, gp->sbuf[0]);
 	la += strlen(la) + 1;
 
-	mbUSAGE = plotDataMemoryUsage(pl, dN) / 1048576UL;
-	mbRAW = plotDataMemoryUncompressed(pl, dN) / 1048576UL;
-	mbCACHE = plotDataMemoryCached(pl, dN) / 1048576UL;
+	mbUSAGE = (int) (plotDataMemoryUsage(pl, dN) / 1048576U);
+	mbRAW = (int) (plotDataMemoryUncompressed(pl, dN) / 1048576U);
+	mbCACHE = (int) (plotDataMemoryCached(pl, dN) / 1048576U);
 
 	lzPC = (mbRAW != 0) ? 100U * mbUSAGE / mbRAW : 0;
 
@@ -1505,7 +1506,7 @@ gpMakeResampleMenu(gp_t *gp)
 	file = rd->data[dN].file;
 	file = (file[0] == '.' && file[1] == '/') ? file + 2 : file;
 
-	gpTextLeftCrop(gp->pl, gp->sbuf[0], file, gp->layout_menu_resample_crop);
+	gpTextLeftCrop(gp->sbuf[0], file, gp->layout_menu_resample_crop);
 
 	symtype = gpSymDatasetFormat(gp, dN);
 
@@ -1652,7 +1653,7 @@ legacy_SetClipboard(SDL_Surface *surface)
 	SDL_SaveBMP_RW(surface, rwops, 0);
 
 	SDL_RWseek(rwops, 0UL, RW_SEEK_END);
-	length = SDL_RWtell(rwops);
+	length = (long) SDL_RWtell(rwops);
 
 	SDL_RWclose(rwops);
 
@@ -4857,7 +4858,7 @@ int gp_Draw(gp_t *gp)
 	menu_t		*mu = gp->mu;
 	edit_t		*ed = gp->ed;
 
-	gp->clock = SDL_GetTicks();
+	gp->clock = (int) SDL_GetTicks();
 	gp->drawn = 0;
 
 	if (rd->files_N != 0) {
@@ -4897,7 +4898,7 @@ int gp_Draw(gp_t *gp)
 
 	if (gp->unfinished != 0) {
 
-		int	t0, t1;
+		Uint32		t0, t1;
 
 		SDL_LockSurface(gp->surface);
 
@@ -4933,7 +4934,7 @@ int gp_Draw(gp_t *gp)
 
 			t1 = SDL_GetTicks();
 
-			gp->level += (t1 - t0 > rd->fastdraw) ? 1
+			gp->level += ((int) (t1 - t0) > rd->fastdraw) ? 1
 				: (gp->level > 0) ? - 1 : 0;
 
 			if (gp->level > 4) {
@@ -5013,7 +5014,7 @@ int gp_Draw(gp_t *gp)
 
 #ifndef _EMBED_GP
 static void
-gpHelp(gp_t *gp)
+gpHelp()
 {
 	printf(	"Usage: gp [-h0kult] [filename] ...\n"
 		"  -0     Open stdin text stream\n"
@@ -5043,7 +5044,7 @@ gpGetOPT(gp_t *gp, char *argv[])
 
 				if (*op == 'h') {
 
-					gpHelp(gp);
+					gpHelp();
 					exit(0);
 				}
 				else if (*op == '0') {

@@ -96,7 +96,7 @@ char *utf8_insert_prev(char *s, const char *i)
 
 	q = s + strlen(s);
 
-	n = strlen(i);
+	n = (int) strlen(i);
 	r = s + n;
 
 	do {
@@ -397,7 +397,7 @@ void editEvent(edit_t *ed, int evno, int ex, int ey)
 
 		if (ed->list_fmt[0] != 0) {
 
-			len = strlen(ed->text);
+			len = (int) strlen(ed->text);
 
 			if (len > 4) {
 

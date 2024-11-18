@@ -73,7 +73,7 @@ void drawClearSurface(draw_t *dw, SDL_Surface *surface, Uint32 col)
 
 	len = pitch * surface->h;
 
-	for (n = 0; n < len - 15UL; n += 16UL) {
+	for (n = 0; n < len - 15; n += 16) {
 
 		*pixels++ = col;
 		*pixels++ = col;
@@ -2279,10 +2279,10 @@ void drawText(draw_t *dw, SDL_Surface *surface, TTF_Font *font, int xs, int ys,
 		svgDrawText(g, xs, ys, text, (svgCol_t) col, flags);
 	}
 
-	textColor.a = 0;
-	textColor.r = (col & 0x00FF0000UL) >> 16;
-	textColor.g = (col & 0x0000FF00UL) >> 8;
-	textColor.b = (col & 0x000000FFUL) >> 0;
+	textColor.a = (Uint8) 0;
+	textColor.r = (Uint8) ((col & 0x00FF0000UL) >> 16);
+	textColor.g = (Uint8) ((col & 0x0000FF00UL) >> 8);
+	textColor.b = (Uint8) ((col & 0x000000FFUL) >> 0);
 
 	if (dw->blendfont != 0) {
 
@@ -3303,7 +3303,7 @@ void drawMarkCanvas(draw_t *dw, SDL_Surface *surface, clipBox_t *cb, double fxs,
 	}
 	else if (shape == SHAPE_FILLING) {
 
-		drawDotCanvas(dw, surface, cb, fxs, fys, rsize * 1.8, ncol, 0);
+		drawDotCanvas(dw, surface, cb, fxs, fys, (int) (rsize * 1.8), ncol, 0);
 	}
 	else if (shape == SHAPE_SYMBOL) {
 

@@ -44,7 +44,7 @@ async_READ(async_FILE *afd)
 			nw = afd->preload - wp;
 			nw = (nw > afd->chunk) ? afd->chunk : nw;
 
-			r = fread(afd->stream + wp, 1, nw, afd->fd);
+			r = (int) fread(afd->stream + wp, 1, nw, afd->fd);
 
 			if (r != 0) {
 

@@ -209,6 +209,7 @@ typedef struct {
 				struct {
 
 					int	column_X;
+					Uint32	modified;
 
 					double	scale;
 					double	offset;
