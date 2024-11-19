@@ -1,7 +1,7 @@
 #!/tmp/gp/gp
 # vi: ft=conf
 
-# Use small chunk for real-time plot.
+# Use tiny chunk for real-time plot.
 #
 chunk 20
 

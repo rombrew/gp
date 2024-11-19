@@ -8,9 +8,8 @@ include "global.gp"
 # Define which files to load.
 #
 # <1> Dataset number that used to refer to the file.
-# <2> Number of lines to allocate appropriate amount of memory. If the file has
-#     more lines the last ones will disappear from plot. Value 0 means automatic
-#     determination based on file size.
+# <2> Number of lines to allocate memory. If the file has more lines the last
+#     ones will disappear from plot. Define 0 to allocate unlimited.
 # <3> File format ("stdin", "text", "float", "double").
 # <4> Number of columns.
 # <5> Name of the file.
@@ -22,9 +21,9 @@ load 0 0 float 100 "tlmdata.f"
 #
 #load 0 0 stdin
 
-# If you specify a text file format the remaining parameters will be different.
-# The number of columns is not specified but is determined by the content of
-# the file.
+# If you specify a "text" file format the remaining parameters will be
+# different. The number of columns is not specified but is determined by the
+# content of the file.
 #
 #load 0 0 text "tlmgrab.csv"
 

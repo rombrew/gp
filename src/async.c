@@ -89,7 +89,7 @@ async_FILE *async_open(FILE *fd, int preload, int chunk, int timeout)
 {
 	async_FILE		*afd;
 
-	afd = calloc(1, sizeof(async_FILE));
+	afd = (async_FILE *) calloc(1, sizeof(async_FILE));
 
 	afd->preload = preload;
 	afd->chunk = chunk;

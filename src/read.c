@@ -187,13 +187,12 @@ read_t *readAlloc(draw_t *dw, plot_t *pl)
 {
 	read_t		*rd;
 
-	rd = calloc(1, sizeof(read_t));
+	rd = (read_t *) calloc(1, sizeof(read_t));
 
 	rd->dw = dw;
 	rd->pl = pl;
 
-	strcpy(rd->screenpath, ".");
-
+	rd->screenpath[0] = 0;
 	rd->ttfname[0] = 0;
 
 	rd->window_size_x = GP_MIN_SIZE_X;

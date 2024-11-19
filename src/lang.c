@@ -175,7 +175,7 @@ void langFill(lang_t *la, int lang)
 		la->legend_menu =
 
 			"    Drawing primitive ...\0"
-			"    Time resample ...\0"
+			"N   Time resample ...\0"
 			"    Scale on X ...\0"
 			"    Scale on Y ...\0"
 			"    Bake figures to CSV ...\0"
@@ -382,7 +382,7 @@ void langFill(lang_t *la, int lang)
 		la->legend_menu =
 
 			"    Примитив рисования ...\0"
-			"    Передискретизация ...\0"
+			"N   Передискретизация ...\0"
 			"    Масштаб по X ...\0"
 			"    Масштаб по Y ...\0"
 			"    Запечь фигуры в CSV ...\0"

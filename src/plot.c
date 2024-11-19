@@ -57,20 +57,12 @@ int fp_isfinite(double x)
 	return ((0x7FFUL & (unsigned long) (u.l >> 52)) != 0x7FFUL) ? 1 : 0;
 }
 
-Uint32 l_hash(Uint32 hash)
-{
-	hash = hash * 1149773U;
-	hash ^= (hash << 1) + (hash >> 4);
-
-	return hash;
-}
-
 plot_t *plotAlloc(draw_t *dw, scheme_t *sch)
 {
 	plot_t		*pl;
 	int		N;
 
-	pl = calloc(1, sizeof(plot_t));
+	pl = (plot_t *) calloc(1, sizeof(plot_t));
 
 	pl->dw = dw;
 	pl->sch = sch;
@@ -1384,7 +1376,7 @@ plotDataSubtractWrite(plot_t *pl, int dN, int sN, int rN_beg, int id_N_beg, int 
 		}
 		while (1);
 
-		pl->data[dN].sub[sN].op.scale.modified = 0U;
+		pl->data[dN].sub[sN].op.scale.modified = 0;
 	}
 	else if (mode == SUBTRACT_RESAMPLE) {
 
@@ -4144,23 +4136,24 @@ plotSubtractGarbage(plot_t *pl, int dN)
 static int
 plotSubtractOriginal(plot_t *pl, int dN, int cN)
 {
-	Uint32		modified;
-	int		fN, sN, cN1;
+	int		fN, sN, cN1, modified;
 
 	sN = cN - pl->data[dN].column_N;
 
 	if (		sN >= 0 && sN < PLOT_SUBTRACT
-			&& pl->data[dN].sub[sN].busy == SUBTRACT_SCALE
-			&& pl->data[dN].sub[sN].op.scale.scale == (double) 1.
-			&& pl->data[dN].sub[sN].op.scale.offset == (double) 0.) {
+			&& pl->data[dN].sub[sN].busy == SUBTRACT_SCALE) {
 
 		cN1 = pl->data[dN].sub[sN].op.scale.column_X;
 		modified = pl->data[dN].sub[sN].op.scale.modified;
 
-		if (modified == 0U) {
+		if (modified == 0) {
 
-			cN = cN1;
-			goto plotSubtractMerge_END;
+			if (		pl->data[dN].sub[sN].op.scale.scale == (double) 1.
+					&& pl->data[dN].sub[sN].op.scale.offset == (double) 0.) {
+
+				cN = cN1;
+				goto plotSubtractMerge_END;
+			}
 		}
 
 		for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
@@ -4172,9 +4165,7 @@ plotSubtractOriginal(plot_t *pl, int dN, int cN)
 				sN = pl->figure[fN].column_X - pl->data[dN].column_N;
 
 				if (		sN >= 0 && sN < PLOT_SUBTRACT
-						&& pl->data[dN].sub[sN].busy == SUBTRACT_SCALE
-						&& pl->data[dN].sub[sN].op.scale.scale == (double) 1.
-						&& pl->data[dN].sub[sN].op.scale.offset == (double) 0.) {
+						&& pl->data[dN].sub[sN].busy == SUBTRACT_SCALE) {
 
 					if (		cN1 == pl->data[dN].sub[sN].op.scale.column_X
 							&& modified == pl->data[dN].sub[sN].op.scale.modified) {
@@ -4195,9 +4186,7 @@ plotSubtractOriginal(plot_t *pl, int dN, int cN)
 				sN = pl->figure[fN].column_Y - pl->data[dN].column_N;
 
 				if (		sN >= 0 && sN < PLOT_SUBTRACT
-						&& pl->data[dN].sub[sN].busy == SUBTRACT_SCALE
-						&& pl->data[dN].sub[sN].op.scale.scale == (double) 1.
-						&& pl->data[dN].sub[sN].op.scale.offset == (double) 0.) {
+						&& pl->data[dN].sub[sN].busy == SUBTRACT_SCALE) {
 
 					if (		cN1 == pl->data[dN].sub[sN].op.scale.column_X
 							&& modified == pl->data[dN].sub[sN].op.scale.modified) {
@@ -4216,26 +4205,6 @@ plotSubtractOriginal(plot_t *pl, int dN, int cN)
 plotSubtractMerge_END:
 
 	return cN;
-}
-
-static void
-plotSubtractModifyHash(plot_t *pl, int dN, int cN, Uint32 hash)
-{
-	Uint32		modified;
-	int		sN;
-
-	sN = cN - pl->data[dN].column_N;
-
-	if (		sN >= 0 && sN < PLOT_SUBTRACT
-			&& pl->data[dN].sub[sN].busy == SUBTRACT_SCALE
-			&& pl->data[dN].sub[sN].op.scale.scale == (double) 1.
-			&& pl->data[dN].sub[sN].op.scale.offset == (double) 0.) {
-
-		modified = pl->data[dN].sub[sN].op.scale.modified;
-		modified = l_hash(modified + hash);
-
-		pl->data[dN].sub[sN].op.scale.modified = modified;
-	}
 }
 
 void plotTotalSubtractGarbage(plot_t *pl)
@@ -4552,6 +4521,22 @@ int plotFigureAnyData(plot_t *pl)
 	return dN;
 }
 
+int plotFigureHaveData(plot_t *pl, int dN)
+{
+	int		fN, N = 0;
+
+	for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
+
+		if (		pl->figure[fN].busy != 0
+				&& pl->figure[fN].data_N == dN) {
+
+			N++;
+		}
+	}
+
+	return N;
+}
+
 static int
 plotGetSubtractTimeMedianByMatch(plot_t *pl, int dN, int cNX, int length, int unwrap)
 {
@@ -4705,7 +4690,7 @@ int plotGetSubtractScale(plot_t *pl, int dN, int cN, double scale, double offset
 
 			pl->data[dN].sub[sN].busy = SUBTRACT_SCALE;
 			pl->data[dN].sub[sN].op.scale.column_X = cN;
-			pl->data[dN].sub[sN].op.scale.modified = 0U;
+			pl->data[dN].sub[sN].op.scale.modified = 0;
 			pl->data[dN].sub[sN].op.scale.scale = scale;
 			pl->data[dN].sub[sN].op.scale.offset = offset;
 		}
@@ -4721,15 +4706,12 @@ int plotGetSubtractScale(plot_t *pl, int dN, int cN, double scale, double offset
 static int
 plotGetSubtractClone(plot_t *pl, int dN, int cN)
 {
-	Uint32		modified = 0U;
-	int		sN;
+	int		sN, modified = 0;
 
 	sN = cN - pl->data[dN].column_N;
 
 	if (		sN >= 0 && sN < PLOT_SUBTRACT
-			&& pl->data[dN].sub[sN].busy == SUBTRACT_SCALE
-			&& pl->data[dN].sub[sN].op.scale.scale == (double) 1.
-			&& pl->data[dN].sub[sN].op.scale.offset == (double) 0.) {
+			&& pl->data[dN].sub[sN].busy == SUBTRACT_SCALE) {
 
 		modified = pl->data[dN].sub[sN].op.scale.modified;
 	}
@@ -5758,7 +5740,7 @@ plotLabelFusedCSV(plot_t *pl, char *label, const char *name, const char *unit)
 	*l = 0;
 }
 
-void plotFigureExportCSV(plot_t *pl, const char *file)
+int plotFigureExportCSV(plot_t *pl, const char *file)
 {
 	int		list_dN[20], list_cN[20], list_fN[20];
 	int		N, fN, aN, job, len_N = 0;
@@ -5824,7 +5806,7 @@ void plotFigureExportCSV(plot_t *pl, const char *file)
 		if (fd_csv == NULL) {
 
 			ERROR("fopen(\"%s\"): %s\n", file, strerror(errno));
-			return ;
+			return -1;
 		}
 
 		for (N = 0; N < len_N; ++N) {
@@ -5866,6 +5848,8 @@ void plotFigureExportCSV(plot_t *pl, const char *file)
 
 		fclose(fd_csv);
 	}
+
+	return 0;
 }
 
 void plotFigureClean(plot_t *pl)
@@ -6802,14 +6786,12 @@ plotPickDraw(plot_t *pl, SDL_Surface *surface)
 void plotBrushErase(plot_t *pl)
 {
 	double		fmin_X, fmin_Y, fmax_X, fmax_Y;
-	int		N, fN, aN, bN, dN, cNX, cNY;
+	int		N, fN, aN, bN, dN, cNX, cNY, sNX, sNY;
 
-	Uint32		modified = SDL_GetTicks();
+	int		modified = (int) (SDL_GetTicks() & 65535U);
 
-	modified = l_hash(modified + (Uint32) pl->brush_box_X);
-	modified = l_hash(modified + (Uint32) pl->brush_box_Y);
-	modified = l_hash(modified + (Uint32) pl->brush_cur_X);
-	modified = l_hash(modified + (Uint32) pl->brush_cur_Y);
+	modified += pl->brush_box_X + pl->brush_box_Y
+		+ pl->brush_cur_X + pl->brush_cur_Y;
 
 	for (fN = 0; fN < PLOT_FIGURE_MAX; ++fN) {
 
@@ -6898,8 +6880,18 @@ void plotBrushErase(plot_t *pl)
 					fmin_Y = plotAxisConvBackward(pl, bN, pl->brush_box_Y);
 				}
 
-				plotSubtractModifyHash(pl, dN, cNX, modified);
-				plotSubtractModifyHash(pl, dN, cNY, modified);
+				sNX = cNX - pl->data[dN].column_N;
+				sNY = cNY - pl->data[dN].column_N;
+
+				if (pl->data[dN].sub[sNX].busy == SUBTRACT_SCALE) {
+
+					pl->data[dN].sub[sNX].op.scale.modified += modified;
+				}
+
+				if (pl->data[dN].sub[sNY].busy == SUBTRACT_SCALE) {
+
+					pl->data[dN].sub[sNY].op.scale.modified += modified;
+				}
 
 				plotDataErase(pl, dN, cNX, cNY, fmin_X, fmin_Y, fmax_X, fmax_Y);
 

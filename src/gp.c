@@ -123,6 +123,7 @@ struct gp_struct {
 	int		hover_box;
 
 	double		resample_range[2];
+	int		resample_locked;
 
 	int		layout_page_box;
 	int		layout_page_title_offset;
@@ -1615,16 +1616,20 @@ gpTakeScreen(gp_t *gp)
 	}
 	else if (gp->screen_take == GP_TAKE_SVG) {
 
-		svgClose((svg_t *) gp->surface->userdata);
-		gp->surface->userdata = NULL;
+		if (gp->surface->userdata != NULL) {
 
-		ERROR("Figure was saved to \"%s\"\n", gp->tempfile);
+			svgClose((svg_t *) gp->surface->userdata);
+			gp->surface->userdata = NULL;
+
+			ERROR("Figure was saved to \"%s\"\n", gp->tempfile);
+		}
 	}
 	else if (gp->screen_take == GP_TAKE_CSV) {
 
-		plotFigureExportCSV(gp->pl, gp->tempfile);
+		if (plotFigureExportCSV(gp->pl, gp->tempfile) == 0) {
 
-		ERROR("CSV table was saved to \"%s\"\n", gp->tempfile);
+			ERROR("CSV table was saved to \"%s\"\n", gp->tempfile);
+		}
 	}
 
 	gp->screen_take = GP_TAKE_NONE;
@@ -1746,7 +1751,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 2:
-				sprintf(gp->sbuf[0], "%s/g%if%i.png", rd->screenpath,
+				sprintf(gp->sbuf[0], "%sg%if%i.png", rd->screenpath,
 						rd->page_N, gp->pl->legend_N);
 
 				N = 1;
@@ -1759,7 +1764,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 						break;
 					}
 
-					sprintf(gp->sbuf[0], "%s/g%if%i_%i.png", rd->screenpath,
+					sprintf(gp->sbuf[0], "%sg%if%i_%i.png", rd->screenpath,
 							rd->page_N, gp->pl->legend_N, N);
 
 					N++;
@@ -2061,6 +2066,8 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 					gpMakeDatasetSelectMenu(gp);
 
 					menuRaise(mu, 10221, gp->la_menu, mu->box_X, mu->box_Y);
+					menuSelect(mu, gp->data_N);
+
 					gp->stat = GP_MENU;
 					break;
 
@@ -2068,6 +2075,10 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 					gpMakeColumnSelectMenu(gp, gp->data_N);
 
 					menuRaise(mu, 10222, gp->la_menu, mu->box_X, mu->box_Y);
+
+					N = readGetTimeColumn(rd, gp->data_N);
+					menuSelect(mu, N + 1);
+
 					gp->stat = GP_MENU;
 					break;
 
@@ -2253,6 +2264,8 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 			gpMakeDatasetMenu(gp);
 
 			menuRaise(mu, 1022, gp->la_menu, mu->box_X, mu->box_Y);
+			menuSelect(mu, 0);
+
 			gp->stat = GP_MENU;
 		}
 	}
@@ -2265,6 +2278,8 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 			gpMakeDatasetMenu(gp);
 
 			menuRaise(mu, 1022, gp->la_menu, mu->box_X, mu->box_Y);
+			menuSelect(mu, 2);
+
 			gp->stat = GP_MENU;
 		}
 	}
@@ -2844,10 +2859,21 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 
 					gp->resample_range[0] = fmin;
 					gp->resample_range[1] = fmax;
+					gp->resample_locked = 0;
 
 					gpMakeResampleMenu(gp);
 
 					menuRaise(mu, 402, gp->la_menu, mu->box_X, mu->box_Y);
+
+					N = gpGetBlankData(rd);
+
+					if (rd->data[N].format == FORMAT_DATA_BLANK) {
+
+						N = plotFigureHaveData(pl, N);
+
+						gp->resample_locked = (N != 0) ? 1 : 0;
+					}
+
 					gp->stat = GP_MENU;
 				}
 				break;
@@ -2871,7 +2897,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 4:
-				sprintf(gp->sbuf[0], "%s/g%if%i.csv", rd->screenpath,
+				sprintf(gp->sbuf[0], "%sg%if%i.csv", rd->screenpath,
 						rd->page_N, gp->pl->legend_N);
 
 				N = 1;
@@ -2884,7 +2910,7 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 						break;
 					}
 
-					sprintf(gp->sbuf[0], "%s/g%if%i_%i.csv", rd->screenpath,
+					sprintf(gp->sbuf[0], "%sg%if%i_%i.csv", rd->screenpath,
 							rd->page_N, gp->pl->legend_N, N);
 
 					N++;
@@ -2953,11 +2979,21 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				gpMakeDatasetSelectMenu(gp);
 
 				menuRaise(mu, 4021, gp->la_menu, mu->box_X, mu->box_Y);
+				menuSelect(mu, gp->blank_N);
 
 				gp->stat = GP_MENU;
 				break;
 
 			case 1:
+				if (gp->resample_locked != 0) {
+
+					menuResume(mu);
+					menuLayout(mu);
+
+					gp->stat = GP_MENU;
+					break;
+				}
+
 				N = (rd->data[gp->blank_N].format == FORMAT_DATA_BLANK)
 					? rd->data[gp->blank_N].length_N
 					: plotDataLength(pl, gp->blank_N);
@@ -2978,6 +3014,15 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 				break;
 
 			case 3:
+				if (gp->resample_locked != 0) {
+
+					menuResume(mu);
+					menuLayout(mu);
+
+					gp->stat = GP_MENU;
+					break;
+				}
+
 				editRaise(ed, 25, gp->la->time_step_edit,
 						gp->sbuf[3], mu->box_X, mu->box_Y);
 
@@ -3024,6 +3069,8 @@ gpMenuHandle(gp_t *gp, int menu_N, int item_N)
 			gpMakeResampleMenu(gp);
 
 			menuRaise(mu, 402, gp->la_menu, mu->box_X, mu->box_Y);
+			menuSelect(mu, 0);
+
 			gp->stat = GP_MENU;
 		}
 	}
@@ -3115,8 +3162,8 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 	menu_t		*mu = gp->mu;
 	svg_t		*g;
 
-	double		scale, offset, gain;
-	int		len, n;
+	double		scale, offset, fmin, fmax, gain;
+	int		N, args[2], len, n;
 
 	if (edit_N == 1) {
 
@@ -3208,8 +3255,6 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 	}
 	else if (edit_N == 8) {
 
-		int		args[2];
-
 		n = sscanf(text, "%d %d", &args[0], &args[1]);
 
 		if (n != 0) {
@@ -3275,6 +3320,8 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 		gpMakeDatasetMenu(gp);
 
 		menuRaise(mu, 1022, gp->la_menu, mu->box_X, mu->box_Y);
+		menuSelect(mu, 6);
+
 		gp->stat = GP_MENU;
 	}
 	else if (edit_N == 12) {
@@ -3297,6 +3344,8 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 		gpMakeDatasetMenu(gp);
 
 		menuRaise(mu, 1022, gp->la_menu, mu->box_X, mu->box_Y);
+		menuSelect(mu, 7);
+
 		gp->stat = GP_MENU;
 	}
 	else if (edit_N == 13) {
@@ -3340,8 +3389,6 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 		}
 	}
 	else if (edit_N == 16) {
-
-		int		args[2];
 
 		n = sscanf(text, "%d %d", &args[0], &args[1]);
 
@@ -3387,17 +3434,17 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 		gpMakeDatasetMenu(gp);
 
 		menuRaise(mu, 1022, gp->la_menu, mu->box_X, mu->box_Y);
+		menuSelect(mu, 3);
+
 		gp->stat = GP_MENU;
 	}
 	else if (edit_N == 18) {
-
-		int		args[2];
 
 		n = sscanf(text, "%d %d %d", &len, &args[0], &args[1]);
 
 		if (n != 0) {
 
-			if (len >= 1 && len <= PLOT_MEDIAN_MAX) {
+			if (len >= 0 && len <= PLOT_MEDIAN_MAX) {
 
 				plotFigureSubtractTimeMedian(pl, gp->fig_N,
 						len, args[0], args[1]);
@@ -3418,8 +3465,6 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 		}
 	}
 	else if (edit_N == 20) {
-
-		int		args[2];
 
 		n = sscanf(text, "%d %d", &args[0], &args[1]);
 
@@ -3472,8 +3517,6 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 	}
 	else if (edit_N == 22) {
 
-		double		fmin, fmax;
-
 		n = sscanf(text, "%le %le", &fmin, &fmax);
 
 		if (n >= 2) {
@@ -3485,6 +3528,8 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 		gpMakeResampleMenu(gp);
 
 		menuRaise(mu, 402, gp->la_menu, mu->box_X, mu->box_Y);
+		menuSelect(mu, 2);
+
 		gp->stat = GP_MENU;
 	}
 	else if (edit_N == 23) {
@@ -3504,6 +3549,7 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 		mu->mark[0].subs = gp->sbuf[2];
 
 		menuResume(mu);
+
 		gp->stat = GP_MENU;
 	}
 	else if (edit_N == 24) {
@@ -3512,7 +3558,11 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 		if (n != 0) {
 
-			if (len > 0) {
+			N = (rd->data[gp->blank_N].format == FORMAT_DATA_BLANK)
+				? rd->data[gp->blank_N].length_N
+				: plotDataLength(pl, gp->blank_N);
+
+			if (len > 0 && len != N) {
 
 				gpMakeBlank(gp, len);
 			}
@@ -3521,6 +3571,8 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 		gpMakeResampleMenu(gp);
 
 		menuRaise(mu, 402, gp->la_menu, mu->box_X, mu->box_Y);
+		menuSelect(mu, 1);
+
 		gp->stat = GP_MENU;
 	}
 	else if (edit_N == 25) {
@@ -3529,15 +3581,24 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 
 		if (n != 0) {
 
+			N = (rd->data[gp->blank_N].format == FORMAT_DATA_BLANK)
+				? rd->data[gp->blank_N].length_N
+				: plotDataLength(pl, gp->blank_N);
+
 			len = (int) ((gp->resample_range[1]
 					- gp->resample_range[0]) / offset + 1);
 
-			gpMakeBlank(gp, len);
+			if (len != N) {
+
+				gpMakeBlank(gp, len);
+			}
 		}
 
 		gpMakeResampleMenu(gp);
 
 		menuRaise(mu, 402, gp->la_menu, mu->box_X, mu->box_Y);
+		menuSelect(mu, 3);
+
 		gp->stat = GP_MENU;
 	}
 	else if (edit_N == 26) {
@@ -3555,6 +3616,8 @@ gpEditHandle(gp_t *gp, int edit_N, const char *text)
 		gpMakeResampleMenu(gp);
 
 		menuRaise(mu, 402, gp->la_menu, mu->box_X, mu->box_Y);
+		menuSelect(mu, 5);
+
 		gp->stat = GP_MENU;
 	}
 }
@@ -3686,6 +3749,13 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 				mu->box_Y = -1;
 
 				gpMenuHandle(gp, 102, 3);
+			}
+			else if (ev->key.keysym.sym == SDLK_n) {
+
+				mu->box_X = -1;
+				mu->box_Y = -1;
+
+				gpMenuHandle(gp, 4, 1);
 			}
 			else if (ev->key.keysym.sym == SDLK_i) {
 
@@ -4215,6 +4285,7 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 			if (ev->key.keysym.sym == SDLK_ESCAPE) {
 
 				gp->stat = GP_IDLE;
+				pl->brush_on = 0;
 			}
 			else if (ev->key.keysym.sym == SDLK_e) {
 
@@ -4231,8 +4302,11 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 		}
 		else if (ev->type == SDL_MOUSEBUTTONDOWN) {
 
-			if (ev->button.button == SDL_BUTTON_RIGHT)
+			if (ev->button.button == SDL_BUTTON_RIGHT) {
+
 				gp->stat = GP_IDLE;
+				pl->brush_on = 0;
+			}
 		}
 		else if (ev->type == SDL_MOUSEBUTTONUP) {
 
@@ -4249,8 +4323,6 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 						pl->brush_cur_Y = gp->cur_Y;
 
 						plotBrushErase(pl);
-
-						pl->brush_on = 0;
 					}
 					else {
 						if (gp->box_X > gp->cur_X) {
@@ -4286,6 +4358,7 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 				}
 
 				gp->stat = GP_IDLE;
+				pl->brush_on = 0;
 			}
 		}
 		else if (ev->type == SDL_MOUSEMOTION) {
@@ -4306,11 +4379,9 @@ gpEventHandle(gp_t *gp, const SDL_Event *ev)
 
 		if (mu->id == 2) {
 
-			N = gp->ax_N;
-
-			mu->mark[0].subs = (pl->axis[N].compact == 0) ? " " : "X";
-			mu->mark[1].subs = (pl->axis[N].exponential == 0) ? " " : "X";
-			mu->mark[2].subs = (pl->axis[N].lock_tick == 0) ? " " : "X";
+			mu->mark[0].subs = (pl->axis[gp->ax_N].compact == 0) ? " " : "X";
+			mu->mark[1].subs = (pl->axis[gp->ax_N].exponential == 0) ? " " : "X";
+			mu->mark[2].subs = (pl->axis[gp->ax_N].lock_tick == 0) ? " " : "X";
 		}
 
 		if (ev->type == SDL_KEYDOWN) {
@@ -5173,6 +5244,19 @@ gpGetOPT(gp_t *gp, char *argv[])
 	}
 }
 
+#ifdef _WINDOWS
+static void
+legacy_CloseConsole()
+{
+	DWORD		pLIST[4];
+
+	if (GetConsoleProcessList(pLIST, 4) == 1) {
+
+		FreeConsole();
+	}
+}
+#endif /* _WINDOWS */
+
 int main(int argn, char *argv[])
 {
 	gp_t		*gp;
@@ -5206,6 +5290,10 @@ int main(int argn, char *argv[])
 	}
 
 	gp_OpenWindow(gp);
+
+#ifdef _WINDOWS
+	legacy_CloseConsole();
+#endif /* _WINDOWS */
 
 	while (gp_IsQuit(gp) == 0) {
 

@@ -21,17 +21,16 @@
 #font 26 "normal"
 #font 26 "/usr/share/fonts/corefonts/cour.ttf"
 
-# Path to the screenshot directory.
+# Path to the screenshot directory (and filename prefix).
 #
-screenpath "/tmp"
+screenpath "/tmp/"
 
-# Preload buffer size (in bytes) to read files. Large values increases
-# file loading performance.
+# Preload buffer length (in bytes). A larger value improves file loading performance.
 #
 preload 8388608
 
-# Chunk is a minimal piece of data (in bytes) to read files. Small values
-# allows us to read data immediately for real-time plots.
+# Chunk is a minimal piece of data (in bytes) to read from files. Tiny value
+# allows you to read data immediately for real-time plots.
 #
 chunk 4096
 
@@ -39,7 +38,7 @@ chunk 4096
 #
 timeout 5000
 
-# Data length to allocate (number of lines). Unlimited file grows if null.
+# Data length to allocate (number of lines). Define 0 to allocate unlimited.
 #
 length 0
 
@@ -115,11 +114,12 @@ fastdraw 200
 #
 interpolation 1
 
-# Define the time gap threshold to use with unwrap and resample operation.
+# Define the time gap threshold to use with unwrap and resample functions.
 #
 defungap 10
 
-# Use in RAM dataset compression by LZ4 algorithm.
+# Use in RAM dataset compression by LZ4 algorithm. This reduces RAM usage on
+# large files (over 100Mb) but beware of performance degrade.
 #
 lz4_compress 1
 

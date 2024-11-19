@@ -209,7 +209,7 @@ typedef struct {
 				struct {
 
 					int	column_X;
-					Uint32	modified;
+					int	modified;
 
 					double	scale;
 					double	offset;
@@ -550,6 +550,7 @@ void plotFigureExchange(plot_t *pl, int fN_1, int fN_2);
 
 int plotFigureSelected(plot_t *pl);
 int plotFigureAnyData(plot_t *pl);
+int plotFigureHaveData(plot_t *pl, int dN);
 
 tuple_t plotGetSubtractTimeMedian(plot_t *pl, int dN, int cNX, int cNY, int length, int unwrap, int opdata);
 int plotGetSubtractScale(plot_t *pl, int dN, int cN, double scale, double offset);
@@ -568,7 +569,7 @@ void plotTotalSubtractResample(plot_t *pl, int dN, double tmin, double tmax);
 
 int plotDataBoxPolyfit(plot_t *pl, int fN);
 void plotFigureSubtractPolyfit(plot_t *pl, int fN_1, int N0, int N1);
-void plotFigureExportCSV(plot_t *pl, const char *file);
+int plotFigureExportCSV(plot_t *pl, const char *file);
 void plotFigureClean(plot_t *pl);
 void plotSketchClean(plot_t *pl);
 int plotGetSketchLength(plot_t *pl);

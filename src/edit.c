@@ -225,7 +225,7 @@ edit_t *editAlloc(draw_t *dw, scheme_t *sch)
 {
 	edit_t			*ed;
 
-	ed = calloc(1, sizeof(edit_t));
+	ed = (edit_t *) calloc(1, sizeof(edit_t));
 
 	ed->dw = dw;
 	ed->sch = sch;
