@@ -1,7 +1,8 @@
 # Graph Plotter
 
 GP is aimed to be simple and fast tool to analyse numerical data. It does not
-claim to replace all other plotters.
+claim to replace all other plotters. The main platforms are GNU/Linux and
+Windows. GP can be embedded to any third-party SDL2 based application.
 
 ## Features
 
@@ -9,13 +10,11 @@ claim to replace all other plotters.
 * Spatial structure based rendering to look through a large datasets.
 * Multiple axes are supported by design.
 * Real-time plotting from multiple asynchronous sources.
-* Simple math operations like subtraction or polynomial fitting.
+* Math operations like subtraction or polynomial fitting.
 * Data sample tool to extract accurate numeric values.
 * Static (from file) and dynamic (from UI) configuration.
 * Export screen or data to the file (PNG, SVG, CSV).
-
-The main platforms are GNU/Linux and Windows. GP can be embedded to any
-third-party SDL2 based application.
+* In-RAM data compression by [LZ4](https://lz4.org).
 
 ## Screenshots
 
@@ -51,7 +50,9 @@ description of the columns. Here is a simple example of the plain text file.
 	...
 
 You also can open a multiple files to combine various columns from different
-files in a single plot. Also check for command line options help.
+files in a single plot. Explore UI menu options to overview of all features.
+
+Also check for command line options help.
 
 	$ gp -h
 
