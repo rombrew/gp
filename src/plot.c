@@ -415,10 +415,9 @@ plotDataCacheFetch(plot_t *pl, int dN, int kN)
 				ERROR("Unable to allocate LZ4 memory of %i dataset\n", dN);
 			}
 
-			lzLEN = LZ4_compress_default(
-					(const char *) pl->data[dN].cache[xN].raw,
+			lzLEN = LZ4_compress_fast((const char *) pl->data[dN].cache[xN].raw,
 					(char *) pl->data[dN].compress[kNZ].raw,
-					pl->data[dN].chunk_bSIZE, lzLEN);
+					pl->data[dN].chunk_bSIZE, lzLEN, 1);
 
 			if (lzLEN > 0) {
 
@@ -454,10 +453,8 @@ plotDataCacheFetch(plot_t *pl, int dN, int kN)
 
 	if (pl->data[dN].compress[kN].raw != NULL) {
 
-		lzLEN = LZ4_decompress_safe(
-				(const char *) pl->data[dN].compress[kN].raw,
-				(char *) pl->data[dN].raw[kN],
-				pl->data[dN].compress[kN].length,
+		lzLEN = LZ4_decompress_safe((const char *) pl->data[dN].compress[kN].raw,
+				(char *) pl->data[dN].raw[kN], pl->data[dN].compress[kN].length,
 				pl->data[dN].chunk_bSIZE);
 
 		if (lzLEN != pl->data[dN].chunk_bSIZE) {
@@ -532,7 +529,10 @@ void plotDataAlloc(plot_t *pl, int dN, int cN, int lN)
 			return ;
 		}
 
-		plotSketchClean(pl);
+		if (plotFigureHaveData(pl, dN) != 0) {
+
+			plotSketchClean(pl);
+		}
 
 		plotDataRangeCacheClean(pl, dN);
 		plotDataChunkAlloc(pl, dN, lN);
