@@ -7,41 +7,44 @@ include "global.gp"
 
 # Define which files to load.
 #
-# <1> Dataset number that used to refer to the file.
+# <1> Dataset ID is used to refer to the file.
 # <2> Number of lines to allocate memory. If the file has more lines the last
 #     ones will disappear from plot. Define 0 to allocate unlimited.
-# <3> File format ("stdin", "text", "float", "double").
+# <3> Dataset type is one of ("stub" "stdin", "csv", "fp32", "fp64").
 # <4> Number of columns.
 # <5> Name of the file.
 #
-load 0 0 float 100 "tlmdata.f"
-#load 0 0 double 50 "tlmdata.d"
+load 0 0 fp32 100 "tlmdata.f"
+#load 0 0 fp64 50 "tlmdata.d"
 
-# You can specify stdin stream as plaint text source.
+# Use the "stub" dataset type if you intend to load data by API calls.
+#
+#load 0 0 stub 10
+
+# If you specify a "csv" type of dataset the remaining number will be
+# discarded. The number of columns is determined by the content of the file.
+#
+#load 0 0 csv "tlmgrab.csv"
+
+# You can specify "stdin" type to grab CSV data from standard input stream.
 #
 #load 0 0 stdin
 
-# If you specify a "text" file format the remaining parameters will be
-# different. The number of columns is not specified but is determined by the
-# content of the file.
-#
-#load 0 0 text "tlmgrab.csv"
-
-# Select the dataset by number. Make sense only if there are several ones.
+# Select the dataset by ID. Make sense only if there are several ones.
 #
 bind 0
 
 # Define group of data columns.
 #
-# <1> Group number.
-# <2...N> List of column numbers in current dataset.
+# <1> Group ID.
+# <2..N> List of column numbers from current dataset.
 #
 group 0 0
 #group 2 14 15 18 21
 
 # Label of the group that applied to axes by default.
 #
-# <1> Group number.
+# <1> Group ID.
 # <2> Axis label.
 #
 deflabel 0 "Time (s)"
@@ -51,7 +54,7 @@ deflabel 1 "Line"
 
 # Time median transform of the group that applied by default.
 #
-# <1> Group number.
+# <1> Group ID.
 # <2> Median length.
 # <3> Time unwrap flag (optional).
 # <4> Data median flag (optional).
@@ -61,7 +64,7 @@ deflabel 1 "Line"
 
 # Scale of the group that applied to columns by default.
 #
-# <1> Group number.
+# <1> Group ID.
 # <2> Scale.
 # <3> Offset.
 #

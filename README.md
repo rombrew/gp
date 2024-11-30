@@ -2,7 +2,7 @@
 
 GP is aimed to be simple and fast tool to analyse numerical data. It does not
 claim to replace all other plotters. The main platforms are GNU/Linux and
-Windows. GP can be embedded to any third-party SDL2 based application.
+Windows. GP can be embedded to any third-party SDL based application.
 
 ## Features
 
@@ -23,7 +23,7 @@ Windows. GP can be embedded to any third-party SDL2 based application.
 
 ## Build
 
-Here are the dependencies that you need to have prior to compile.
+These dependencies you need to have prior to compile GP from sources.
 
 * [SDL2](https://www.libsdl.org/)
 * [SDL2_ttf](https://www.libsdl.org/projects/SDL_ttf/)
@@ -36,17 +36,17 @@ To compile GP you could use Makefile from source directory.
 
 You can just use GP to view a plain text file or CSV table.
 
-	$ gp file1.txt file2.csv ...
+	$ gp file.txt file.csv ...
 
 Note that first valid line of plain text (or CSV) file will be interpreted as
 description of the columns. Here is a simple example of the plain text file.
 
-	$ cat file1.txt
-	time@sec  var1@A  var2@V  hexvar  ...
-	0.1       0.0     0.0     0x0001
-	0.2       1.1     2.1     0x0035
-	0.3       1.5     3.4     0x0d1f
-	0.4       1.7     4.1     0x0e00
+	$ cat file.txt
+	time@sec  current@A  voltage@V  hexvar  ...
+	0.1       0.0        0.0        0x0001
+	0.2       1.1        2.1        0x0035
+	0.3       1.5        3.4        0x0d1f
+	0.4       1.7        4.1        0x0e00
 	...
 
 You also can open a multiple files to combine various columns from different
@@ -58,7 +58,7 @@ Also check for command line options help.
 
 Example of pipeline usage with GP.
 
-	$ zcat config/tlmgrab.csv.gz | gp -t0 -0
+	$ zcat config/tlmgrab.csv.gz | gp -x0 -l1 - -p3 -n4
 
 ## Сonfiguration
 

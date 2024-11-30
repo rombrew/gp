@@ -1,11 +1,11 @@
 #!/tmp/gp/gp
 # vi: ft=conf
 
-# Decimal delimiter (in text files only).
+# Decimal delimiter (in CSV files only).
 #
 #delim ,
 
-# Extra space characters (in text files only).
+# Define extra space characters (column delimiter in CSV).
 #
 #space "*="
 
@@ -13,9 +13,9 @@
 #
 timecol -1
 
-# Load CSV text file.
+# Load CSV (text) file.
 #
-load 0 0 text "tlmgrab.csv"
+load 0 0 csv "tlmgrab.csv"
 
 # Specify the time group with default scale and label.
 #

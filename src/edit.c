@@ -167,6 +167,7 @@ const char *utf8_skip_byte(const char *s, int n)
 		else break;
 
 		r = (char *) utf8_go_next(s);
+
 		n += (int) (s - r);
 		s = r;
 	}

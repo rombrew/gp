@@ -3204,6 +3204,7 @@ void plotAxisScaleAutoCond(plot_t *pl, int aN, int bN)
 			plotAxisScaleManual(pl, aN, fmin, fmax);
 		}
 
+		pl->axis[aN].lock_scale = LOCK_FREE;
 		pl->axis[aN].lock_tick = 0;
 	}
 }
@@ -3468,8 +3469,7 @@ plotAxisGetSorted(plot_t *pl, int bN, yaxis_t *map)
 
 			if (job != 0) {
 
-				cond = plotAxisRangeCond(pl, aN, -1, &map[yN].fmin,
-						&map[yN].fmax);
+				cond = plotAxisRangeCond(pl, aN, -1, &map[yN].fmin, &map[yN].fmax);
 
 				if (cond != 0) {
 
