@@ -501,6 +501,7 @@ plotDataChunkWrite(plot_t *pl, int dN, int kN)
 void plotDataAlloc(plot_t *pl, int dN, int cN, int lN)
 {
 	int		*map;
+
 	int		N, bSIZE;
 
 	if (dN < 0 || dN >= PLOT_DATASET_MAX) {
@@ -584,7 +585,7 @@ void plotDataAlloc(plot_t *pl, int dN, int cN, int lN)
 
 		pl->data[dN].map = (int *) map + 1;
 
-		for (N = -1; N < (cN + PLOT_SUBTRACT); ++N) {
+		for (N = -1; N < cN + PLOT_SUBTRACT; ++N) {
 
 			pl->data[dN].map[N] = -1;
 		}
@@ -2885,7 +2886,7 @@ void plotAxisLabel(plot_t *pl, int aN, const char *label)
 
 		strcpy(pl->axis[aN].label, label);
 
-		pl->axis[aN].compact = (strlen(pl->axis[aN].label) >= 3) ? 0 : 1;
+		pl->axis[aN].compact = (strlen(pl->axis[aN].label) >= 4) ? 0 : 1;
 	}
 }
 
@@ -7083,23 +7084,20 @@ plotDrawPalette(plot_t *pl)
 	palette[12] = drawRGBMap(dw, sch->plot_text);
 }
 
-static int
-plotGetTickCached(plot_t *pl)
+static Uint32
+plotGetTick(plot_t *pl)
 {
-	if (pl->tick_skip > 0) {
+	if (pl->tick_skip++ >= 63) {
 
-		pl->tick_skip--;
-	}
-	else {
-		pl->tick_cached = (int) SDL_GetTicks();
-		pl->tick_skip = 63;
+		pl->tick_cached = SDL_GetTicks();
+		pl->tick_skip = 0;
 	}
 
 	return pl->tick_cached;
 }
 
 static void
-plotDrawFigureTrial(plot_t *pl, int fN, int tTOP)
+plotDrawFigureTrial(plot_t *pl, int fN, Uint32 tTOP)
 {
 	const fval_t	*row;
 
@@ -7271,7 +7269,7 @@ plotDrawFigureTrial(plot_t *pl, int fN, int tTOP)
 				line = 0;
 			}
 
-			if (id_N > id_N_top || plotGetTickCached(pl) > tTOP) {
+			if (id_N > id_N_top || plotGetTick(pl) > tTOP) {
 
 				pl->draw[fN].sketch = SKETCH_INTERRUPTED;
 				pl->draw[fN].rN = rN;
@@ -7362,7 +7360,7 @@ plotDrawFigureTrial(plot_t *pl, int fN, int tTOP)
 				plotDataChunkSkip(pl, dN, &rN, &id_N);
 			}
 
-			if (id_N > id_N_top || plotGetTickCached(pl) > tTOP) {
+			if (id_N > id_N_top || plotGetTick(pl) > tTOP) {
 
 				pl->draw[fN].sketch = SKETCH_INTERRUPTED;
 				pl->draw[fN].rN = rN;
@@ -8492,7 +8490,9 @@ static void
 plotDrawFigureTrialAll(plot_t *pl)
 {
 	int		FIGS[PLOT_FIGURE_MAX];
-	int		N, fN, fQ, lN, dN, tTOP;
+	int		N, fN, fQ, lN, dN;
+
+	Uint32		tTOP;
 
 	lN = 0;
 
@@ -8528,7 +8528,9 @@ plotDrawFigureTrialAll(plot_t *pl)
 
 	if (pl->draw_in_progress != 0) {
 
-		tTOP = (int) SDL_GetTicks() + 20;
+		pl->tick_cached = SDL_GetTicks();
+
+		tTOP = pl->tick_cached + (Uint32) PLOT_RUNTIME_MAX;
 
 		drawClearTrial(pl->dw);
 
@@ -8554,7 +8556,7 @@ plotDrawFigureTrialAll(plot_t *pl)
 
 			if (fN >= 0) {
 
-				if ((int) SDL_GetTicks() > tTOP)
+				if (SDL_GetTicks() > tTOP)
 					break;
 
 				plotDrawFigureTrial(pl, fN, tTOP);

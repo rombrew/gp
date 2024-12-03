@@ -54,6 +54,7 @@
 #define PLOT_SKETCH_CHUNK_SIZE			32768
 #define PLOT_SKETCH_MAX				800
 #define PLOT_STRING_MAX				200
+#define PLOT_RUNTIME_MAX			20
 
 enum {
 	TTF_ID_NONE			= 0,
@@ -427,7 +428,7 @@ typedef struct {
 
 	int			draw_in_progress;
 
-	int			tick_cached;
+	Uint32			tick_cached;
 	int			tick_skip;
 
 	struct {

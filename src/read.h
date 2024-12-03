@@ -195,7 +195,7 @@ typedef struct {
 
 	page_t		page[READ_PAGE_MAX];
 
-	int		files_N;
+	int		keep_N;
 
 	int		bind_N;
 	int		page_N;

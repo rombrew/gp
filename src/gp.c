@@ -94,18 +94,20 @@ struct gp_context {
 	int		unfinished;
 	int		drawn;
 
-	int		clock;
+	Uint32		clock;
+	Uint32		updated;
+
 	int		idled;
-	int		updated;
 	int		level;
 
 	int		ctrl_on;
 	int		shift_on;
 
-	int		i_show_fps;
-	int		i_frames;
-	int		i_clocked;
-	int		i_FPS;
+	Uint32		fps_clock;
+
+	int		fps_show;
+	int		fps_frame;
+	int		fps_value;
 
 	int		fullscreen;
 	int		hinting;
@@ -3685,7 +3687,7 @@ gpEventHandle(gpcon_t *gp, const SDL_Event *ev)
 			}
 			else if (ev->key.keysym.sym == SDLK_i) {
 
-				gp->i_show_fps = gp->i_show_fps ? 0 : 1;
+				gp->fps_show = gp->fps_show ? 0 : 1;
 			}
 			else if (	ev->key.keysym.sym == SDLK_PAGEUP
 					|| ev->key.keysym.sym == SDLK_UP) {
@@ -4635,13 +4637,13 @@ gpDrawBoxSelect(SDL_Surface *surface, gpcon_t *gp)
 static void
 gpFPSUpdate(gpcon_t *gp)
 {
-	gp->i_frames += 1;
+	gp->fps_frame += 1;
 
-	if (gp->i_clocked < gp->clock) {
+	if (gp->fps_clock < gp->clock) {
 
-		gp->i_FPS = gp->i_frames;
-		gp->i_frames = 0;
-		gp->i_clocked = gp->clock + 1000;
+		gp->fps_value = gp->fps_frame;
+		gp->fps_frame = 0;
+		gp->fps_clock = gp->clock + 1000U;
 	}
 }
 
@@ -4867,29 +4869,26 @@ Uint32 gp_OpenWindow(gpcon_t *gp)
 	return gp->window_ID;
 }
 
-void gp_DataAdd(gpcon_t *gp, int dN, const double *payload)
+int gp_DataAdd(gpcon_t *gp, int dN, const double *payload)
 {
 	plot_t		*pl = gp->pl;
 	read_t		*rd = gp->rd;
 
-	int		N, cN;
+	int		rc, N = 0;
 
 	if (		dN >= 0 && dN < PLOT_DATASET_MAX
 			&& rd->data[dN].format == FORMAT_STUB_DATA) {
 
-		cN = pl->data[dN].column_N;
+		rc = async_write(rd->data[dN].afd, (void *) payload,
+				pl->data[dN].column_N * sizeof(double));
 
-		for (N = 0; N < cN; ++N)
-			rd->data[dN].row[N] = (fval_t) payload[N];
+		if (rc == ASYNC_OK) {
 
-		plotDataInsert(pl, dN, rd->data[dN].row);
-
-		if (		rd->data[dN].length_N < 1
-				&& plotDataSpaceLeft(rd->pl, dN) < 3) {
-
-			plotDataGrowUp(rd->pl, dN);
+			N = 1;
 		}
 	}
+
+	return N;
 }
 
 void gp_FileReload(gpcon_t *gp)
@@ -4964,21 +4963,20 @@ int gp_Draw(gpcon_t *gp)
 	menu_t		*mu = gp->mu;
 	edit_t		*ed = gp->ed;
 
-	gp->clock = (int) SDL_GetTicks();
+	gp->clock = SDL_GetTicks();
 	gp->drawn = 0;
 
-	if (rd->files_N != 0) {
+	if (readDataLoad(rd) != 0) {
 
-		if (readDataLoad(rd) != 0) {
-
-			gp->active = 1;
-		}
+		gp->active = 1;
 	}
-	else {
+
+	if (rd->keep_N == 0) {
+
 		plotAxisScaleLock(pl, LOCK_FREE);
 	}
 
-	if (gp->i_show_fps != 0) {
+	if (gp->fps_show != 0) {
 
 		gp->active = 1;
 	}
@@ -4988,7 +4986,7 @@ int gp_Draw(gpcon_t *gp)
 		gp->idled = 0;
 	}
 
-	if (gp->updated + 250 < gp->clock) {
+	if (gp->updated + 250U < gp->clock) {
 
 		gp->idled += 1;
 		gp->active = (gp->idled < 20) ? 1 : 0;
@@ -5080,13 +5078,13 @@ int gp_Draw(gpcon_t *gp)
 		editDraw(ed, gp->surface);
 
 		if (		gp->window != NULL
-				&& gp->i_show_fps != 0) {
+				&& gp->fps_show != 0) {
 
 			int		len, jam;
 
 			len = plotGetSketchLength(pl);
 
-			sprintf(gp->sbuf[0], "L %4d FPS %2d", len, gp->i_FPS);
+			sprintf(gp->sbuf[0], "L %4d FPS %2d", len, gp->fps_value);
 
 			TTF_SizeUTF8(pl->font, gp->sbuf[0], &len, &jam);
 
@@ -5135,7 +5133,7 @@ void gp_SavePNG(gpcon_t *gp, const char *file)
 	do {
 		(void) readDataLoad(rd);
 	}
-	while (rd->files_N != 0);
+	while (rd->keep_N != 0);
 
 	plotAxisScaleDefault(pl);
 
@@ -5165,7 +5163,7 @@ void gp_SaveSVG(gpcon_t *gp, const char *file)
 	do {
 		(void) readDataLoad(rd);
 	}
-	while (rd->files_N != 0);
+	while (rd->keep_N != 0);
 
 	plotAxisScaleDefault(pl);
 
@@ -5611,7 +5609,7 @@ gpHelloPage(gpcon_t *gp)
 
 	for (N = 0; N < lN; N += cN) {
 
-		gp_DataAdd(gp, 0, &payload[N]);
+		(void) gp_DataAdd(gp, 0, &payload[N]);
 	}
 
 	gp_PageCombine(gp, 1, GP_PAGE_SELECT);

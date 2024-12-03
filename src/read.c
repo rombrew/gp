@@ -1199,7 +1199,7 @@ void readOpenUnified(read_t *rd, int dN, int cN, int lN, const char *file, int f
 		rd->data[dN].fd = fd;
 		rd->data[dN].afd = async_open(fd, rd->preload, rd->chunk, rd->timeout);
 
-		rd->files_N += 1;
+		rd->keep_N += 1;
 		rd->bind_N = dN;
 	}
 }
@@ -1217,6 +1217,13 @@ void readOpenStub(read_t *rd, int dN, int cN, int lN, const char *file, int fmt)
 
 	strcpy(rd->data[dN].file, file);
 
+	if (fmt == FORMAT_STUB_DATA) {
+
+		rd->data[dN].fd = NULL;
+		rd->data[dN].afd = async_stub(rd->preload, rd->chunk, rd->timeout);
+	}
+
+	rd->keep_N += 1;
 	rd->bind_N = dN;
 }
 
@@ -1252,13 +1259,34 @@ void readToggleHint(read_t *rd, int dN, int cN)
 }
 
 static int
-readTEXTCSV(read_t *rd, int dN)
+readSTUB(read_t *rd, int dN)
 {
-	int		r, cN;
+	double		*fbuf = (double *) rd->data[dN].buf;
+	int		rc, N, cN = rd->pl->data[dN].column_N;
 
-	r = async_gets(rd->data[dN].afd, rd->data[dN].buf, sizeof(rd->data[0].buf));
+	rc = async_read(rd->data[dN].afd, (void *) fbuf, cN * sizeof(double));
 
-	if (r == ASYNC_OK) {
+	if (rc == ASYNC_OK) {
+
+		for (N = 0; N < cN; ++N)
+			rd->data[dN].row[N] = (fval_t) fbuf[N];
+
+		plotDataInsert(rd->pl, dN, rd->data[dN].row);
+
+		return 1;
+	}
+
+	return 0;
+}
+
+static int
+readCSV(read_t *rd, int dN)
+{
+	int		rc, cN;
+
+	rc = async_gets(rd->data[dN].afd, rd->data[dN].buf, sizeof(rd->data[0].buf));
+
+	if (rc == ASYNC_OK) {
 
 		cN = readCSVGetRow(rd, dN, rd->pl->data[dN].column_N);
 
@@ -1269,7 +1297,7 @@ readTEXTCSV(read_t *rd, int dN)
 
 		return 1;
 	}
-	else if (r == ASYNC_END_OF_FILE) {
+	else if (rc == ASYNC_END_OF_FILE) {
 
 		readCloseFile(rd, dN);
 	}
@@ -1278,23 +1306,23 @@ readTEXTCSV(read_t *rd, int dN)
 }
 
 static int
-readFLOAT(read_t *rd, int dN)
+readFP32(read_t *rd, int dN)
 {
-	float		*fb = (float *) rd->data[dN].buf;
-	int		r, N, cN = rd->pl->data[dN].column_N;
+	float		*fbuf = (float *) rd->data[dN].buf;
+	int		rc, N, cN = rd->pl->data[dN].column_N;
 
-	r = async_read(rd->data[dN].afd, (void *) fb, cN * sizeof(float));
+	rc = async_read(rd->data[dN].afd, (void *) fbuf, cN * sizeof(float));
 
-	if (r == ASYNC_OK) {
+	if (rc == ASYNC_OK) {
 
 		for (N = 0; N < cN; ++N)
-			rd->data[dN].row[N] = (fval_t) fb[N];
+			rd->data[dN].row[N] = (fval_t) fbuf[N];
 
 		plotDataInsert(rd->pl, dN, rd->data[dN].row);
 
 		return 1;
 	}
-	else if (r == ASYNC_END_OF_FILE) {
+	else if (rc == ASYNC_END_OF_FILE) {
 
 		readCloseFile(rd, dN);
 	}
@@ -1303,23 +1331,23 @@ readFLOAT(read_t *rd, int dN)
 }
 
 static int
-readDOUBLE(read_t *rd, int dN)
+readFP64(read_t *rd, int dN)
 {
-	double		*fb = (double *) rd->data[dN].buf;
-	int		r, N, cN = rd->pl->data[dN].column_N;
+	double		*fbuf = (double *) rd->data[dN].buf;
+	int		rc, N, cN = rd->pl->data[dN].column_N;
 
-	r = async_read(rd->data[dN].afd, (void *) fb, cN * sizeof(double));
+	rc = async_read(rd->data[dN].afd, (void *) fbuf, cN * sizeof(double));
 
-	if (r == ASYNC_OK) {
+	if (rc == ASYNC_OK) {
 
 		for (N = 0; N < cN; ++N)
-			rd->data[dN].row[N] = (fval_t) fb[N];
+			rd->data[dN].row[N] = (fval_t) fbuf[N];
 
 		plotDataInsert(rd->pl, dN, rd->data[dN].row);
 
 		return 1;
 	}
-	else if (r == ASYNC_END_OF_FILE) {
+	else if (rc == ASYNC_END_OF_FILE) {
 
 		readCloseFile(rd, dN);
 	}
@@ -1332,17 +1360,17 @@ static int
 readLEGACY(read_t *rd, int dN)
 {
 	char		*fb = (char *) rd->data[dN].buf;
-	int		r, N, cN = rd->pl->data[dN].column_N;
+	int		rc, N, cN = rd->pl->data[dN].column_N;
 
 	if (rd->data[dN].format == FORMAT_BINARY_LEGACY_V1) {
 
-		r = async_read(rd->data[dN].afd, (void *) fb, cN * 6);
+		rc = async_read(rd->data[dN].afd, (void *) fb, cN * 6);
 	}
 	else {
-		r = async_read(rd->data[dN].afd, (void *) fb, cN * 4);
+		rc = async_read(rd->data[dN].afd, (void *) fb, cN * 4);
 	}
 
-	if (r == ASYNC_OK) {
+	if (rc == ASYNC_OK) {
 
 		if (rd->data[dN].format == FORMAT_BINARY_LEGACY_V1) {
 
@@ -1358,7 +1386,7 @@ readLEGACY(read_t *rd, int dN)
 
 		return 1;
 	}
-	else if (r == ASYNC_END_OF_FILE) {
+	else if (rc == ASYNC_END_OF_FILE) {
 
 		readCloseFile(rd, dN);
 	}
@@ -1369,24 +1397,25 @@ readLEGACY(read_t *rd, int dN)
 
 int readDataLoad(read_t *rd)
 {
-	FILE		*fd;
-	int		dN, tTOP, file_N = 0, ulN = 0;
+	int		dN, keep_N = 0, ulN = 0;
+
+	Uint32		tTOP;
 
 	for (dN = 0; dN < PLOT_DATASET_MAX; ++dN) {
 
-		fd = rd->data[dN].fd;
+		FILE		*fd = rd->data[dN].fd;
+
+		tTOP = SDL_GetTicks() + (Uint32) PLOT_RUNTIME_MAX;
 
 		if (fd != NULL) {
 
-			file_N += 1;
-
-			tTOP = (int) SDL_GetTicks() + 20;
+			keep_N += 1;
 
 			do {
 				if (		rd->data[dN].format == FORMAT_TEXT_STDIN
 						|| rd->data[dN].format == FORMAT_TEXT_CSV) {
 
-					if (readTEXTCSV(rd, dN) != 0) {
+					if (readCSV(rd, dN) != 0) {
 
 						ulN += 1;
 					}
@@ -1396,7 +1425,7 @@ int readDataLoad(read_t *rd)
 				}
 				else if (rd->data[dN].format == FORMAT_BINARY_FP_32) {
 
-					if (readFLOAT(rd, dN) != 0) {
+					if (readFP32(rd, dN) != 0) {
 
 						ulN += 1;
 					}
@@ -1406,7 +1435,7 @@ int readDataLoad(read_t *rd)
 				}
 				else if (rd->data[dN].format == FORMAT_BINARY_FP_64) {
 
-					if (readDOUBLE(rd, dN) != 0) {
+					if (readFP64(rd, dN) != 0) {
 
 						ulN += 1;
 					}
@@ -1428,6 +1457,10 @@ int readDataLoad(read_t *rd)
 					}
 				}
 #endif /* _LEGACY */
+				else {
+					readCloseFile(rd, dN);
+					break;
+				}
 
 				rd->data[dN].line_N++;
 
@@ -1437,13 +1470,46 @@ int readDataLoad(read_t *rd)
 					plotDataGrowUp(rd->pl, dN);
 				}
 			}
-			while ((int) SDL_GetTicks() < tTOP);
+			while (SDL_GetTicks() < tTOP);
+
+			plotDataSubtractResidual(rd->pl, dN);
+		}
+		else if (rd->data[dN].format == FORMAT_STUB_DATA) {
+
+			Uint32		tSTOP;
+
+			tSTOP = rd->data[dN].afd->clock
+				+ (Uint32) rd->data[dN].afd->timeout;
+
+			if (SDL_GetTicks() < tSTOP) {
+
+				keep_N += 1;
+			}
+
+			do {
+				if (readSTUB(rd, dN) != 0) {
+
+					ulN += 1;
+				}
+				else {
+					break;
+				}
+
+				rd->data[dN].line_N++;
+
+				if (		rd->data[dN].length_N < 1
+						&& plotDataSpaceLeft(rd->pl, dN) < 3) {
+
+					plotDataGrowUp(rd->pl, dN);
+				}
+			}
+			while (SDL_GetTicks() < tTOP);
 
 			plotDataSubtractResidual(rd->pl, dN);
 		}
 	}
 
-	rd->files_N = (file_N < rd->files_N) ? file_N : rd->files_N;
+	rd->keep_N = keep_N;
 
 	return ulN;
 }
@@ -1520,7 +1586,8 @@ configToken(read_t *rd, parse_t *pa)
 		c = configGetSym(pa);
 		n = 0;
 
-		while (c != -1 && c != '"' && strchr(rd->mk_config.lend, c) == NULL) {
+		while (		c != -1 && c != '"'
+				&& strchr(rd->mk_config.lend, c) == NULL) {
 
 			if (n < READ_FILE_PATH_MAX - 1) {
 
@@ -1637,6 +1704,8 @@ configParseFSM(read_t *rd, parse_t *pa)
 		rc = configToken(rd, pa);
 
 		if (rc == 0 && pa->newline != 0) {
+
+			pa->newline = 0;
 
 			sprintf(msg_tbuf, "unable to parse \"%.80s\"", tbuf);
 
@@ -3275,11 +3344,11 @@ configParseFSM(read_t *rd, parse_t *pa)
 
 				ERROR("%s:%i: %s\n", pa->file, pa->line_N, msg_tbuf);
 			}
-
-			pa->newline = 0;
 		}
-		else if (rc < 0)
+		else if (rc < 0) {
+
 			break;
+		}
 	}
 	while (1);
 }

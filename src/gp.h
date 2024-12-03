@@ -40,7 +40,7 @@ void gp_TakeEvent(gpcon_t *gp, const SDL_Event *ev);
 SDL_Surface *gp_GetSurface(gpcon_t *gp);
 Uint32 gp_OpenWindow(gpcon_t *gp);
 
-void gp_DataAdd(gpcon_t *gp, int dN, const double *payload);
+int gp_DataAdd(gpcon_t *gp, int dN, const double *payload);
 void gp_FileReload(gpcon_t *gp);
 void gp_PageCombine(gpcon_t *gp, int pN, int remap);
 int gp_PageSafe(gpcon_t *gp);
