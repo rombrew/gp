@@ -1953,11 +1953,14 @@ gpMenuHandle(gpcon_t *gp, int menu_N, int item_N)
 					gpMakeDirMenu(gp);
 
 					menuRaise(mu, 1021, gp->la_menu, mu->box_X, mu->box_Y);
+					menuSelect(mu, 2);
+
 					gp->stat = GP_MENU;
 					break;
 
 				case 2:
 					menuResume(mu);
+
 					gp->stat = GP_MENU;
 					break;
 
@@ -4693,6 +4696,10 @@ gpcon_t *gp_Alloc()
 	gp->cwd[1] = 0;
 
 	gpFileGetPath(gp);
+
+#ifdef _LOCAL_GP
+	gpFileGetLocal(gp);
+#endif /* _LOCAL_GP */
 
 	if (gp->rcfile[0] != 0) {
 
