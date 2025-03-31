@@ -46,7 +46,7 @@
 #define PLOT_AXES_MAX				10
 #define PLOT_FIGURE_MAX 			10
 #define PLOT_DATA_BOX_MAX			10
-#define PLOT_MEDIAN_MAX 			37
+#define PLOT_MEDIAN_MAX 			57
 #define PLOT_POLYFIT_MAX			7
 #define PLOT_SUBTRACT				20
 #define PLOT_GROUP_MAX				40
@@ -77,6 +77,7 @@ enum {
 enum {
 	LOCK_FREE			= 0,
 	LOCK_AUTO,
+	LOCK_CONDITION,
 	LOCK_STACKED
 };
 

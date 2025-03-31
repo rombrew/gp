@@ -58,7 +58,7 @@ Also check for command line options help.
 
 Example of pipeline usage with GP.
 
-	$ zcat config/tlmgrab.csv.gz | gp -x0 -l1 - -p3 -n4
+	$ zcat config/tlmgrab.csv.gz | gp -x0 -l1 -t10 - -p3 -n4
 
 ## Сonfiguration
 

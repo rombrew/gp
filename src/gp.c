@@ -4190,6 +4190,8 @@ gpEventHandle(gpcon_t *gp, const SDL_Event *ev)
 
 							plotAxisScaleAutoCond(pl, pl->on_Y, pl->on_X);
 						}
+
+						pl->axis[pl->on_X].lock_scale = LOCK_FREE;
 					}
 					else {
 						fmin = plotAxisConvBackward(pl, pl->on_Y, gp->box_Y);
@@ -4201,10 +4203,9 @@ gpEventHandle(gpcon_t *gp, const SDL_Event *ev)
 
 							plotAxisScaleAutoCond(pl, pl->on_X, pl->on_Y);
 						}
-					}
 
-					pl->axis[pl->on_X].lock_scale = LOCK_FREE;
-					pl->axis[pl->on_Y].lock_scale = LOCK_FREE;
+						pl->axis[pl->on_Y].lock_scale = LOCK_FREE;
+					}
 				}
 
 				gp->stat = GP_IDLE;
@@ -4951,6 +4952,8 @@ void gp_AxisRange(gpcon_t *gp, int aN, double min, double max)
 {
 	plot_t		*pl = gp->pl;
 
+	int		N;
+
 	if (aN < 0 || aN >= PLOT_AXES_MAX) {
 
 		ERROR("Axis number is out of range\n");
@@ -4959,8 +4962,23 @@ void gp_AxisRange(gpcon_t *gp, int aN, double min, double max)
 
 	plotAxisScaleManual(pl, aN, min, max);
 
+	for (N = 0; N < PLOT_AXES_MAX; ++N) {
+
+		if (		pl->axis[N].busy == AXIS_BUSY_Y
+				&& pl->axis[N].lock_scale == LOCK_AUTO
+				&& pl->axis[aN].busy == AXIS_BUSY_X) {
+
+			pl->axis[N].lock_scale = LOCK_CONDITION;
+		}
+		else if (	pl->axis[N].busy == AXIS_BUSY_X
+				&& pl->axis[N].lock_scale == LOCK_AUTO
+				&& pl->axis[aN].busy == AXIS_BUSY_Y) {
+
+			pl->axis[N].lock_scale = LOCK_CONDITION;
+		}
+	}
+
 	pl->axis[aN].lock_scale = LOCK_FREE;
-	pl->axis[aN].lock_tick = 0;
 }
 
 int gp_IsQuit(gpcon_t *gp)
@@ -5216,7 +5234,7 @@ gpUsageHelp()
 		"  -x[n]          Time column default\n"
 		"  -l[n]          Color scheme number\n"
 		"  -pcn[n]        Select and combine pages\n"
-		"  -a[n] min max  Axis zoom to specified range\n"
+		"  -z[n] min max  Zoom axis to specified range\n"
 		"  -g    file     Save to PNG/SVG file\n"
 		"  -q             Do not open window\n");
 }
@@ -5428,7 +5446,7 @@ gpGetCMD(gpcon_t *gp, int argn, char *argv[])
 					}
 				}
 			}
-			else if (*op == 'a') {
+			else if (*op == 'z') {
 
 				double		fmin, fmax;
 

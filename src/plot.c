@@ -1784,13 +1784,15 @@ void plotDataSubtractCompute(plot_t *pl, int dN, int sN)
 
 void plotDataSubtractResidual(plot_t *pl, int dN)
 {
-	int		rN, id_N, rN_end;
+	int		N, lN, rN, id_N, rN_end;
 
 	if (dN < 0 || dN >= PLOT_DATASET_MAX) {
 
 		ERROR("Dataset number is out of range\n");
 		return ;
 	}
+
+	lN = pl->data[dN].length_N;
 
 	rN = pl->data[dN].sub_N;
 	id_N = pl->data[dN].id_N;
@@ -1799,6 +1801,11 @@ void plotDataSubtractResidual(plot_t *pl, int dN)
 
 	if (rN == rN_end)
 		return ;
+
+	N = rN - pl->data[dN].head_N;
+	N = (N < 0) ? N + lN : N;
+
+	id_N += N;
 
 	plotDataSubtractWriteSeq(pl, dN, rN, id_N, rN_end);
 
@@ -3218,7 +3225,7 @@ void plotAxisScaleAutoCond(plot_t *pl, int aN, int bN)
 			plotAxisScaleManual(pl, aN, fmin, fmax);
 		}
 
-		pl->axis[aN].lock_scale = LOCK_FREE;
+		pl->axis[aN].lock_scale = LOCK_CONDITION;
 		pl->axis[aN].lock_tick = 0;
 	}
 }
@@ -3233,25 +3240,32 @@ void plotAxisScaleLock(plot_t *pl, int knob)
 
 void plotAxisScaleDefault(plot_t *pl)
 {
-	int		aN;
+	int		aN, job = 0;
 
 	for (aN = 0; aN < PLOT_AXES_MAX; ++aN) {
 
-		if (		pl->axis[aN].busy != AXIS_FREE
-				&& pl->axis[aN].lock_scale == LOCK_AUTO) {
+		if (pl->axis[aN].busy != AXIS_FREE) {
 
-			plotAxisScaleAuto(pl, aN);
+			if (pl->axis[aN].lock_scale == LOCK_AUTO) {
+
+				plotAxisScaleAuto(pl, aN);
+			}
+			else if (pl->axis[aN].lock_scale == LOCK_CONDITION) {
+
+				plotAxisScaleAutoCond(pl, aN, -1);
+			}
 		}
-	}
-
-	for (aN = 0; aN < PLOT_AXES_MAX; ++aN) {
 
 		if (		pl->axis[aN].busy == AXIS_BUSY_Y
 				&& pl->axis[aN].lock_scale == LOCK_STACKED) {
 
-			plotAxisScaleStacked(pl, -1);
-			break;
+			job = 1;
 		}
+	}
+
+	if (job != 0) {
+
+		plotAxisScaleStacked(pl, -1);
 	}
 }
 
