@@ -1,6 +1,6 @@
 /*
    Graph Plotter is a tool to analyse numerical data.
-   Copyright (C) 2024 Roman Belov <romblv@gmail.com>
+   Copyright (C) 2025 Roman Belov <romblv@gmail.com>
 
    This program is free software: you can redistribute it and/or modify
    it under the terms of the GNU General Public License as published by
@@ -100,9 +100,10 @@ enum {
 	SUBTRACT_BINARY_HYPOTENUSE,
 	SUBTRACT_FILTER_DIFFERENCE,
 	SUBTRACT_FILTER_CUMULATIVE,
-	SUBTRACT_FILTER_BITMASK,
+	SUBTRACT_FILTER_BITFIELD,
 	SUBTRACT_FILTER_LOW_PASS,
-	SUBTRACT_FILTER_MEDIAN
+	SUBTRACT_FILTER_MEDIAN,
+	SUBTRACT_FILTER_DEMULTIPLEX
 };
 
 enum {
@@ -254,7 +255,7 @@ typedef struct {
 					int	column_X;
 					int	column_Y;
 
-					double	gain;
+					double	value;
 					double	state[2];
 				}
 				filter;
@@ -479,7 +480,7 @@ typedef struct {
 	int			hover_axis;
 
 	int			interpolation;
-	int			defungap;
+	double			defungap;
 
 	int			default_drawing;
 	int			default_width;
@@ -544,7 +545,8 @@ void plotAxisSlave(plot_t *pl, int aN, int bN, double scale, double offset, int 
 void plotAxisRemove(plot_t *pl, int aN);
 
 void plotFigureAdd(plot_t *pl, int fN, int dN, int nX, int nY, int aX, int aY, const char *label);
-void plotTotalSubtractGarbage(plot_t *pl);
+void plotFigureSubtractGarbage(plot_t *pl);
+void plotFigureScaleMerge(plot_t *pl);
 void plotFigureRemove(plot_t *pl, int fN);
 void plotFigureGarbage(plot_t *pl, int dN);
 void plotFigureMoveAxes(plot_t *pl, int fN);
@@ -559,19 +561,20 @@ tuple_t plotGetSubtractTimeMedian(plot_t *pl, int dN, int cNX, int cNY, int leng
 int plotGetSubtractScale(plot_t *pl, int dN, int cN, double scale, double offset);
 int plotGetSubtractResample(plot_t *pl, int dN, int cN_X, int in_dN, int in_cN_X, int in_cN_Y);
 int plotGetSubtractBinary(plot_t *pl, int dN, int opSUB, int cN_1, int cN_2);
-int plotGetSubtractFilter(plot_t *pl, int dN, int cNX, int cNY, int opSUB, double gain);
+int plotGetSubtractFilter(plot_t *pl, int dN, int cNX, int cNY, int opSUB, double value);
 int plotGetSubtractMedian(plot_t *pl, int dN, int cN, int opSUB, int length);
 int plotGetFreeFigure(plot_t *pl);
 
 int plotFigureSubtractGetMedianConfig(plot_t *pl, int fN, int *length, int *unwrap, int *opdata);
-void plotFigureSubtractTimeMedian(plot_t *pl, int fN_1, int length, int unwrap, int opdata);
-void plotFigureSubtractScale(plot_t *pl, int fN_1, int aBUSY, double scale, double offset);
-void plotFigureSubtractFilter(plot_t *pl, int fN_1, int opSUB, double gain);
+void plotFigureSubtractTimeMedian(plot_t *pl, int fN, int length, int unwrap, int opdata);
+void plotFigureSubtractScale(plot_t *pl, int fN, int aBUSY, double scale, double offset);
+void plotFigureSubtractFilter(plot_t *pl, int fN, int opSUB, double value);
+void plotFigureSubtractDemux(plot_t *pl, int fN, int opSUB, int N);
 void plotFigureSubtractSwitch(plot_t *pl, int opSUB);
 void plotTotalSubtractResample(plot_t *pl, int dN, double tmin, double tmax);
 
 int plotDataBoxPolyfit(plot_t *pl, int fN);
-void plotFigureSubtractPolyfit(plot_t *pl, int fN_1, int N0, int N1);
+void plotFigureSubtractPolyfit(plot_t *pl, int fN, int N0, int N1);
 int plotFigureExportCSV(plot_t *pl, const char *file);
 void plotFigureClean(plot_t *pl);
 void plotSketchClean(plot_t *pl);

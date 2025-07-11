@@ -10,7 +10,7 @@ include "global.gp"
 # <1> Dataset ID is used to refer to the file.
 # <2> Number of lines to allocate memory. If the file has more lines the last
 #     ones will disappear from plot. Define 0 to allocate unlimited.
-# <3> Dataset type is one of ("stub" "stdin", "csv", "fp32", "fp64").
+# <3> Dataset type ("stub", "stdin", "csv", "fp32", "fp64").
 # <4> Number of columns.
 # <5> Name of the file.
 #
@@ -40,7 +40,7 @@ bind 0
 # <2..N> List of column numbers from current dataset.
 #
 group 0 0
-#group 2 14 15 18 21
+#group 2 14 15 18
 
 # Label of the group that applied to axes by default.
 #
@@ -48,27 +48,6 @@ group 0 0
 # <2> Axis label.
 #
 deflabel 0 "Time (s)"
-
-group 1 -1
-deflabel 1 "Line"
-
-# Time median transform of the group that applied by default.
-#
-# <1> Group ID.
-# <2> Median length.
-# <3> Time unwrap flag (optional).
-# <4> Data median flag (optional).
-#
-#defmedian 0 5
-#defmedian 1 7 1 1
-
-# Scale of the group that applied to columns by default.
-#
-# <1> Group ID.
-# <2> Scale.
-# <3> Offset.
-#
-defscale 0 1.0 0.5
 
 # Define the page with title.
 #
@@ -96,45 +75,34 @@ page "DQ Current"
 
 	figure 0 38 "pm.vsi_lpf_DC"
 
-		# Change axes mapping of the last figure.
-		#
-		# <1> Number of axis mapped to the figure as X.
-		# <2> Number of axis mapped to the figure as Y.
-		#
-		map 0 2
+	# Change axes mapping of the last figure.
+	#
+	# <1> Number of axis mapped to the figure as X.
+	# <2> Number of axis mapped to the figure as Y.
+	#
+	map 0 2
 
-		# Special scale of the figure data column on X.
-		#
-		# <1> Scale.
-		# <2> Offset.
-		#
-		xscale 1.0 -0.011
+	# Special scale of the figure data column on X.
+	#
+	# <1> Scale.
+	# <2> Offset.
+	#
+	xscale 1.0 -0.1
 
-		# Special scale of the figure data column on Y.
-		#
-		# <1> Scale.
-		# <2> Offset.
-		#
-		yscale 1.0 0.5
+	# Special scale of the figure data column on Y.
+	#
+	# <1> Scale.
+	# <2> Offset.
+	#
+	yscale 1.0 0.5
 
-		# Special figure drawing.
-		#
-		# <1> Name of the drawing.
-		# <2> Width of the figure.
-		#
-		drawing line 4
-		#drawing dot 4
-
-		# Filter operation of the figure data column (on X and Y).
-		#
-		# <1> Filter operation ("diff", "csum", "bf", "low", "med").
-		# <2-3> Operation arguments.
-		#
-		yfilter low 0.1
-		#yfilter diff
-		#yfilter csum
-		#yfilter bf 3 5
-		#yfilter med 7
+	# Special figure drawing.
+	#
+	# <1> Name of the drawing.
+	# <2> Width of the figure.
+	#
+	drawing line 4
+	#drawing dot 4
 
 # Define yet another pages.
 #
@@ -146,17 +114,16 @@ page "Mechanical Speed"
 	figure 0 16 "pm.lu_wS_rpm"
 
 	figure 0 52 "pm.lu_MODE"
+	map 0 2
 
-		map 0 2
-
-		# Define slave axis.
-		#
-		# <1> Number of the axis to be slave.
-		# <2> Number of the axis to be base.
-		# <3> Scale.
-		# <4> Offset.
-		#
-		slave 2 1 100.0 0.0
+	# Define slave axis.
+	#
+	# <1> Number of the axis to be slave.
+	# <2> Number of the axis to be base.
+	# <3> Scale.
+	# <4> Offset.
+	#
+	slave 2 1 100.0 0.0
 
 page "Electrical Position"
 
@@ -166,20 +133,15 @@ page "Electrical Position"
 	figure 0 15 "pm.lu_Fg"
 
 	figure 0 4 "m.theta - pm.lu_Fg"
+	map 0 2
 
-		map 0 2
-
-		# Subtract operation of the data column (on X and Y).
-		#
-		# <1> Subtract operation ("sub", "add", "mul", "hyp").
-		# <2> Column number of the second argument.
-		#
-		ysubtract sub 15
-		#ysubtract add 10
-
-		# Apply median filter with length 7.
-		#
-		yfilter med 7
+	# Subtract operation of the data column (on X and Y).
+	#
+	# <1> Subtract operation ("sub", "add", "mul", "hyp").
+	# <2> Column number of the second argument.
+	#
+	ysubtract sub 15
+	#ysubtract hyp 10
 
 page "E.Position Error"
 label 1 "(°)"

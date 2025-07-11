@@ -13,5 +13,5 @@ mkpages -1
 
 group 0 -1
 deflabel 0 "Time (s)"
-defscale 0 0.04 0
+defscale 0 0.05 0
 

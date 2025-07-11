@@ -5,10 +5,10 @@
 #
 #include "external.gp"
 
-# Font size and the one of the following embedded font names (this should
-# be specified in user ~/.gprc file).
+# Font height and the one of the following embedded font names (should be
+# specified in user ~/.gprc file).
 #
-# <1> Font point size.
+# <1> Font height.
 # <2> Embedded font name or the file path.
 #
 # 	- "normal"
@@ -106,7 +106,7 @@ timecol -1
 shortfilename 1
 
 # Enable automatic switching to the fast drawing method in case of screen
-# drawing time is longer than specified time (in milliseconds).
+# drawing time is longer than specified (in milliseconds).
 #
 fastdraw 200
 

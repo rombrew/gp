@@ -67,6 +67,7 @@ Take a look into configuration examples that describes most of the options.
 * [global.gp](config/global.gp)
 * [loadbin.gp](config/loadbin.gp)
 * [loadcsv.gp](config/loadcsv.gp)
+* [subtract.gp](config/subtract.gp)
 
 You can make real-time plot from raw serial device or from growing logfile.
 
