@@ -48,7 +48,7 @@ page "DQ Current"
 
 	bind 0
 	label 1 "kA"
-	figure 0 5 "pm.lu_iD"
+	figure 0 "iD" "pm.lu_iD"
 
 	# Special scale of the figure data column (on X and Y).
 	#
@@ -64,10 +64,10 @@ page "PCB Temperature"
 
 	bind 0
 	label 1 "C"
-	figure 0 2 "pm.temp_PCB"
-	figure 0 3 "pm.temp_EXP"
+	figure 0 "PCB" "pm.temp_PCB"
+	figure 0 "EXT" "pm.temp_EXP"
 
-	figure 0 3 "pm.temp_EXP (low)"
+	figure 0 "EXT" "pm.temp_EXP (low)"
 
 	# Filter operation of the figure data column (on X and Y).
 	#
@@ -77,7 +77,7 @@ page "PCB Temperature"
 	# Low pass filter with specified gain.
 	yfilter low 0.1
 
-	figure 0 3 "pm.temp_EXP (med)"
+	figure 0 "EXT" "pm.temp_EXP (med)"
 
 	# Median filter with specified length.
 	yfilter med 15
@@ -97,32 +97,32 @@ page "Average Temperature"
 
 	bind 0
 	label 1 "C"
-	figure 0 2 "pm.temp_PCB"
-	figure 0 3 "pm.temp_EXP"
+	figure 0 "PCB" "pm.temp_PCB"
+	figure 0 "EXT" "pm.temp_EXP"
 
-	figure 0 2 "pm.temp_EXP (average)"
+	figure 0 "PCB" "pm.temp_EXP (average)"
 
 	# Subtract operation of the data column (on X and Y).
 	#
 	# <1> Subtract operation ("sub", "add", "mul", "hyp").
 	# <2> Column number of the second argument.
 	#
-	ysubtract add 3
+	ysubtract add "EXT"
 	yscale 0.5 0
 
 page "Bike Speed"
 
 	bind 0
 	label 1 "km/h"
-	figure 0 7 "pm.lu_wS_kmh"
+	figure 0 "wS" "pm.lu_wS_kmh"
 	bind 1
-	figure 0 1 "bike_kmh"
+	figure 0 "bike" "bike_kmh"
 
-page "Bike Speed Discrepancy"
+page "Bike Speed (subtract)"
 
 	bind 0
 	label 1 "km/h"
-	figure 0 7 "pm.lu_wS_kmh (subtract)"
+	figure 0 "wS" "pm.lu_wS_kmh (subtract)"
 
 	# Subtract operation of the data columns (with resample).
 	#
@@ -132,14 +132,14 @@ page "Bike Speed Discrepancy"
 	# <4> Column number of time relative to which we resample.
 	# <5> Column number of the second argument value.
 	#
-	ysubtract sub resample 1 0 1
+	ysubtract sub resample 1 "time" "bike"
 	yfilter med 15
 
-page "Traveled Distance"
+page "Traveled Distance (demultiplex)"
 
 	bind 0
 	label 1 "km"
-	figure 0 15 "pm.watt_traveled_km (demultiplex)"
+	figure 0 "travel" "pm.watt_traveled_km (demultiplex)"
 
 	# Demultiplex (get the value only if selector equals).
 	#

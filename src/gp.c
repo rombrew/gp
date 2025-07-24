@@ -2555,9 +2555,11 @@ gpMenuHandle(gpcon_t *gp, int menu_N, int item_N)
 					mu->hidden_N[3] = 8;
 				}
 
-				if (N < 2) {
+				N = plotFigureAnother(pl, gp->fig_N);
 
-					mu->hidden_N[0] = 14;
+				if (N < 1) {
+
+					mu->hidden_N[4] = 14;
 				}
 
 				gp->stat = GP_MENU;
@@ -3136,7 +3138,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%le %le", &scale, &offset);
 
-		if (n == 2) {
+		if (n >= 2) {
 
 			pl->axis[gp->ax_N].scale = scale;
 			pl->axis[gp->ax_N].offset = offset;
@@ -3148,7 +3150,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%le %le", &scale, &offset);
 
-		if (n != 0) {
+		if (n >= 1) {
 
 			if (n < 2) {
 
@@ -3212,7 +3214,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%d %d", &args[0], &args[1]);
 
-		if (n != 0) {
+		if (n >= 1) {
 
 			if (n == 1) {
 
@@ -3283,7 +3285,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%d", &len);
 
-		if (n != 0) {
+		if (n >= 1) {
 
 			if (len >= 0) {
 
@@ -3307,7 +3309,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%le", &value);
 
-		if (n != 0) {
+		if (n >= 1) {
 
 			plotFigureSubtractFilter(pl, gp->fig_N,
 					SUBTRACT_FILTER_LOW_PASS, value);
@@ -3317,7 +3319,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%i", &len);
 
-		if (n != 0) {
+		if (n >= 1) {
 
 			if (len >= 0 && len <= 16) {
 
@@ -3329,7 +3331,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%d", &len);
 
-		if (n != 0) {
+		if (n >= 1) {
 
 			gpFontToggle(gp, 0, len);
 
@@ -3347,7 +3349,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%d %d", &args[0], &args[1]);
 
-		if (n != 0) {
+		if (n >= 1) {
 
 			if (n == 1) {
 
@@ -3368,7 +3370,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%d", &len);
 
-		if (n != 0) {
+		if (n >= 1) {
 
 			int		unwrap = pl->group[gp->grp_N].op_time_unwrap;
 			int		opdata = pl->group[gp->grp_N].op_time_opdata;
@@ -3397,7 +3399,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%d %d %d", &len, &args[0], &args[1]);
 
-		if (n != 0) {
+		if (n >= 1) {
 
 			if (len >= 0 && len <= PLOT_MEDIAN_MAX) {
 
@@ -3410,7 +3412,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%d", &len);
 
-		if (n != 0) {
+		if (n >= 1) {
 
 			if (len >= 3 && len <= PLOT_MEDIAN_MAX) {
 
@@ -3451,7 +3453,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%d", &len);
 
-		if (n != 0) {
+		if (n >= 1) {
 
 			if (len > 0 && len < 1000) {
 
@@ -3491,7 +3493,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%d", &len);
 
-		if (n != 0) {
+		if (n >= 1) {
 
 			if (len >= 1 && len <= 16) {
 
@@ -3511,7 +3513,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%d", &len);
 
-		if (n != 0) {
+		if (n >= 1) {
 
 			N = (rd->data[gp->blank_N].format == FORMAT_BLANK_DATA)
 				? rd->data[gp->blank_N].length_N
@@ -3534,7 +3536,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%le", &offset);
 
-		if (n != 0) {
+		if (n >= 1) {
 
 			N = (rd->data[gp->blank_N].format == FORMAT_BLANK_DATA)
 				? rd->data[gp->blank_N].length_N
@@ -3560,7 +3562,7 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%le", &value);
 
-		if (n == 1) {
+		if (n >= 1) {
 
 			if (value >= 0.) {
 
@@ -3579,10 +3581,12 @@ gpEditHandle(gpcon_t *gp, int edit_N, const char *text)
 
 		n = sscanf(text, "%d", &N);
 
-		if (n != 0) {
+		if (n >= 1) {
 
-			plotFigureSubtractDemux(pl, gp->fig_N,
-					SUBTRACT_FILTER_DEMULTIPLEX, N);
+			plotFigureSubtractDemux(pl, gp->fig_N, SUBTRACT_FILTER_DEMULTIPLEX, N);
+		}
+		else {
+			plotFigureSubtractClean(pl, gp->fig_N, SUBTRACT_FILTER_DEMULTIPLEX);
 		}
 	}
 }

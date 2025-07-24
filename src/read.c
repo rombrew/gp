@@ -1682,6 +1682,70 @@ configGetSubtract(read_t *rd, int pN, int fN, int axis)
 	return sN;
 }
 
+static int
+configFuzzyLabel(read_t *rd, int dN, const char *fu)
+{
+	char		ubuf[8];
+	const char	*label, *rs, *next;
+
+	int		N, Nb, Npe, cN = -1;
+
+	if (		dN < 0 || (rd->data[dN].format != FORMAT_TEXT_STDIN
+				&& rd->data[dN].format != FORMAT_TEXT_CSV)) {
+
+		return cN;
+	}
+
+	for (N = 0; N < rd->data[dN].column_N; ++N) {
+
+		label = rd->data[dN].label[N];
+
+		rs = strstr(label, fu);
+
+		if (rs == NULL) {
+
+			rs = fu;
+			Npe = 0;
+
+			while (*rs != 0) {
+
+				ubuf[0] = 0;
+
+				next = utf8_go_next(rs);
+				strncat(ubuf, rs, next - rs);
+				rs = next;
+
+				next = strstr(label, ubuf);
+
+				if (next == NULL) {
+
+					label = NULL;
+					break;
+				}
+				else {
+					Npe += next - label;
+					label = utf8_go_next(next);
+				}
+			}
+
+			if (label != NULL) {
+
+				if (cN < 0 || Npe < Nb) {
+
+					Nb = Npe;
+					cN = N;
+				}
+			}
+		}
+		else {
+			cN = N;
+			break;
+		}
+	}
+
+	return cN;
+}
+
 static void
 configParseFSM(read_t *rd, parse_t *pa)
 {
@@ -2138,7 +2202,15 @@ configParseFSM(read_t *rd, parse_t *pa)
 					rc = configToken(rd, pa);
 
 					if (rc == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
-					else break;
+					else {
+						argi[0] = configFuzzyLabel(rd, rd->bind_N, tbuf);
+
+						if (argi[0] < 0) {
+
+							sprintf(msg_tbuf, "no fuzzy match \"%s\"", tbuf);
+							break;
+						}
+					}
 
 					if (argi[0] >= -1 && argi[0] < READ_COLUMN_MAX) {
 
@@ -2632,7 +2704,15 @@ configParseFSM(read_t *rd, parse_t *pa)
 						}
 
 						if (stoi(&rd->mk_config, &argi[1], tbuf) != NULL) ;
-						else break;
+						else {
+							argi[1] = configFuzzyLabel(rd, rd->bind_N, tbuf);
+
+							if (argi[1] < 0) {
+
+								sprintf(msg_tbuf, "no fuzzy match \"%s\"", tbuf);
+								break;
+							}
+						}
 
 						if (argi[1] >= -1 && argi[1] < rd->pl->data[rd->bind_N].column_N) {
 
@@ -2820,7 +2900,15 @@ configParseFSM(read_t *rd, parse_t *pa)
 					rc = configToken(rd, pa);
 
 					if (rc == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
-					else break;
+					else {
+						argi[0] = configFuzzyLabel(rd, rd->bind_N, tbuf);
+
+						if (argi[0] < 0) {
+
+							sprintf(msg_tbuf, "no fuzzy match \"%s\"", tbuf);
+							break;
+						}
+					}
 
 					if (rd->bind_N < 0) {
 
@@ -2929,12 +3017,28 @@ configParseFSM(read_t *rd, parse_t *pa)
 					rc = configToken(rd, pa);
 
 					if (rc == 0 && stoi(&rd->mk_config, &argi[0], tbuf) != NULL) ;
-					else break;
+					else {
+						argi[0] = configFuzzyLabel(rd, rd->bind_N, tbuf);
+
+						if (argi[0] < 0) {
+
+							sprintf(msg_tbuf, "no fuzzy match \"%s\"", tbuf);
+							break;
+						}
+					}
 
 					rc = configToken(rd, pa);
 
 					if (rc == 0 && stoi(&rd->mk_config, &argi[1], tbuf) != NULL) ;
-					else break;
+					else {
+						argi[1] = configFuzzyLabel(rd, rd->bind_N, tbuf);
+
+						if (argi[1] < 0) {
+
+							sprintf(msg_tbuf, "no fuzzy match \"%s\"", tbuf);
+							break;
+						}
+					}
 
 					rc = configToken(rd, pa);
 
@@ -3148,7 +3252,15 @@ configParseFSM(read_t *rd, parse_t *pa)
 							rc = configToken(rd, pa);
 
 							if (rc == 0 && stoi(&rd->mk_config, &argi[2], tbuf) != NULL) ;
-							else break;
+							else {
+								argi[2] = configFuzzyLabel(rd, dN_remap, tbuf);
+
+								if (argi[2] < 0) {
+
+									sprintf(msg_tbuf, "no fuzzy match \"%s\"", tbuf);
+									break;
+								}
+							}
 
 							if (argi[2] < -1 || argi[2] >= rd->pl->data[dN_remap].column_N) {
 
@@ -3159,7 +3271,15 @@ configParseFSM(read_t *rd, parse_t *pa)
 							rc = configToken(rd, pa);
 
 							if (rc == 0 && stoi(&rd->mk_config, &argi[3], tbuf) != NULL) ;
-							else break;
+							else {
+								argi[3] = configFuzzyLabel(rd, dN_remap, tbuf);
+
+								if (argi[3] < 0) {
+
+									sprintf(msg_tbuf, "no fuzzy match \"%s\"", tbuf);
+									break;
+								}
+							}
 
 							if (argi[3] < -1 || argi[3] >= rd->pl->data[dN_remap].column_N) {
 
@@ -3169,7 +3289,17 @@ configParseFSM(read_t *rd, parse_t *pa)
 
 							resample = 1;
 						}
-						else if (stoi(&rd->mk_config, &argi[2], tbuf) != NULL) {
+						else {
+							if (stoi(&rd->mk_config, &argi[2], tbuf) != NULL) ;
+							else {
+								argi[2] = configFuzzyLabel(rd, rd->bind_N, tbuf);
+
+								if (argi[2] < 0) {
+
+									sprintf(msg_tbuf, "no fuzzy match \"%s\"", tbuf);
+									break;
+								}
+							}
 
 							if (argi[2] < -1 || argi[2] >= rd->pl->data[rd->bind_N].column_N) {
 
@@ -3177,7 +3307,6 @@ configParseFSM(read_t *rd, parse_t *pa)
 								break;
 							}
 						}
-						else break;
 					}
 					else break;
 
@@ -3313,7 +3442,15 @@ configParseFSM(read_t *rd, parse_t *pa)
 							rc = configToken(rd, pa);
 
 							if (rc == 0 && stoi(&rd->mk_config, &argi[2], tbuf) != NULL) ;
-							else break;
+							else {
+								argi[2] = configFuzzyLabel(rd, rd->bind_N, tbuf);
+
+								if (argi[2] < 0) {
+
+									sprintf(msg_tbuf, "no fuzzy match \"%s\"", tbuf);
+									break;
+								}
+							}
 
 							if (argi[2] < -1 || argi[2] >= rd->pl->data[rd->bind_N].column_N) {
 

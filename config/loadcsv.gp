@@ -30,3 +30,15 @@ deflabel 0 "Time (s)"
 mkpages -2
 #mkpages 0
 
+page "DC link current (fuzzy)"
+label 1 "(A)"
+
+# Define the figure on the current page. Note that you can specify fuzzy match
+# pattern instead of column number to search for labels in CSV dataset.
+#
+# <1> Fuzzy match pattern to get column on X.
+# <2> Fuzzy match pattern to get column on Y.
+# <3> Name of the figure.
+#
+figure "time" "draA" "DC link current"
+
