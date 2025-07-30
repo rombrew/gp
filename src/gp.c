@@ -46,7 +46,7 @@
 
 #define GP_FILE_ENT_MAX		4000
 
-#define GP_CONFIG_VERSION	18
+#define GP_CONFIG_VERSION	19
 #define GP_CONFIG_FILE		"gprc"
 
 enum {
@@ -306,7 +306,8 @@ gpDefaultFile(gpcon_t *gp)
 				"lz4_compress 1\n");
 
 #ifdef _WINDOWS
-		fprintf(fd,	"legacy_label 1\n");
+		fprintf(fd,	"legacy_label 1\n"
+				"legacy_console 0\n");
 #endif /* _WINDOWS */
 
 		fclose(fd);
@@ -372,6 +373,7 @@ gpWriteFile(gpcon_t *gp)
 
 #ifdef _WINDOWS
 		fprintf(fd, "legacy_label %i\n", rd->legacy_label);
+		fprintf(fd, "legacy_console %i\n", rd->legacy_console);
 #endif /* _WINDOWS */
 
 		fclose(fd);
@@ -5748,7 +5750,10 @@ int main(int argn, char *argv[])
 	(void) gp_OpenWindow(gp);
 
 #ifdef _WINDOWS
-	legacy_CloseConsole();
+	if (gp->rd->legacy_console == 0) {
+
+		legacy_CloseConsole();
+	}
 #endif /* _WINDOWS */
 
 	while (gp_IsQuit(gp) == 0) {
