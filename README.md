@@ -42,7 +42,7 @@ Note that first valid line of plain text (or CSV) file will be interpreted as
 description of the columns. Here is a simple example of the plain text file.
 
 	$ cat file.txt
-	time@sec  current@A  voltage@V  hexvar  ...
+	time@sec  current@A  voltage@V  hexpar@  ...
 	0.1       0.0        0.0        0x0001
 	0.2       1.1        2.1        0x0035
 	0.3       1.5        3.4        0x0d1f
